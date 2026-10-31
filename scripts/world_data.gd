@@ -18,7 +18,7 @@ func _init() -> void:
 		"Sandy Kingdom", "Skyward Atoll", "Water City", "Thriller Shoal",
 		"Marine Outpost", "Turtle Bay", "Coral Haven", "Stormwatch",
 		"Mango Cay", "Pirate's Rest", "Whispering Palms", "Skull Rock"]
-	var biomes := ["tropical", "tropical", "desert", "rocky", "jungle", "snow"]
+	var biomes := ["tropical", "tropical", "desert", "rocky", "jungle", "snow", "volcanic", "mesa", "lagoon"]
 	for i in range(2, ISLAND_COUNT):
 		var radius := rng.randf_range(90.0, 260.0)
 		for attempt in range(350):
@@ -55,18 +55,77 @@ func closest_island(world_position: Vector3) -> Dictionary:
 			best = island
 	return best
 
+# Shared mathematical terrain: renderer, collisions, AI and ocean use
+# exactly the same coastline, including coves and uneven shorelines.
+func coast_radius(island: Dictionary, angle: float) -> float:
+	var base: float = float(island["radius"])
+	var seed: float = float(island["id"]) * 1.73
+	var biome := str(island["biome"])
+	var amplitude := 0.09
+	if biome == "lagoon":
+		amplitude = 0.15
+	elif biome == "volcanic" or biome == "rocky":
+		amplitude = 0.13
+	elif biome == "mesa" or biome == "desert":
+		amplitude = 0.06
+	var coves := sin(3.0 * angle + seed) * 0.53
+	coves += cos(5.0 * angle + seed * 0.63) * 0.29
+	coves += sin(8.0 * angle + seed * 1.4) * 0.18
+	return base * (0.96 + amplitude * coves)
+
 func ground_height(island: Dictionary, point: Vector3) -> float:
 	var dx: float = point.x - float(island["x"])
 	var dz: float = point.z - float(island["z"])
 	var r := sqrt(dx * dx + dz * dz)
-	var radius: float = float(island["radius"])
-	if r >= radius:
+	var angle := atan2(dz, dx)
+	var shoreline := coast_radius(island, angle)
+	if r >= shoreline:
 		return -3.0
-	var t := clampf(1.0 - r / radius, 0.0, 1.0)
-	var base := pow(t, 0.67) * float(island["height"])
-	var ripple := (sin(dx * 0.045 + float(island["id"])) +
-		cos(dz * 0.039)) * 0.9 * t
-	return base + ripple
+	var t := clampf(1.0 - r / shoreline, 0.0, 1.0)
+	var elevation: float = float(island["height"])
+	var biome := str(island["biome"])
+	var id := float(island["id"])
+	var ridge := absf(sin(dx * 0.041 + id * 2.31) * cos(dz * 0.038 - id))
+	var swell := sin(dx * 0.024 + id * 1.7) * cos(dz * 0.029 - id)
+	var base := elevation * pow(t, 0.82)
+	match biome:
+		"desert":
+			base = elevation * pow(t, 1.32)
+			base += 3.3 * sin(dx * 0.065 + id) * cos(dz * 0.036) * pow(t, 0.42)
+		"mesa":
+			var plateau := smoothstep(0.26, 0.41, t)
+			base = elevation * plateau
+			base += 1.9 * ridge * t
+		"snow":
+			base = elevation * pow(t, 0.43)
+			base += elevation * 0.38 * ridge * pow(t, 1.6)
+		"rocky":
+			base = elevation * pow(t, 0.66)
+			base += elevation * 0.43 * ridge * pow(t, 1.5)
+		"volcanic":
+			base = elevation * pow(t, 0.59)
+			base += elevation * 0.46 * ridge * pow(t, 1.8)
+			var crater := exp(-pow(r / (shoreline * 0.15), 2.0))
+			base -= elevation * 0.33 * crater
+		"lagoon":
+			base = elevation * pow(t, 1.62)
+			base += 4.5 * ridge * t
+		"jungle":
+			base = elevation * pow(t, 0.70)
+			base += elevation * 0.31 * swell * pow(t, 1.25)
+		"legend":
+			base = elevation * pow(t, 0.49)
+			base += elevation * 0.38 * ridge * pow(t, 1.8)
+		_:
+			base += elevation * 0.16 * swell * pow(t, 1.1)
+	# Keep the coastline continuous and never place terrain below sea
+	# level. The first strip of beach always begins at elevation zero.
+	return maxf(0.0, base)
+
+func terrain_zone(island: Dictionary, world_point: Vector3) -> float:
+	var delta := Vector2(world_point.x - float(island["x"]), world_point.z - float(island["z"]))
+	var coastline := coast_radius(island, atan2(delta.y, delta.x))
+	return clampf(delta.length() / coastline, 0.0, 1.0)
 
 func coast_point(island: Dictionary, ship_position: Vector3) -> Vector3:
 	var center := Vector3(float(island["x"]), 0.0, float(island["z"]))
@@ -74,7 +133,9 @@ func coast_point(island: Dictionary, ship_position: Vector3) -> Vector3:
 	towards_ship.y = 0.0
 	if towards_ship.length_squared() < 1.0:
 		towards_ship = Vector3.FORWARD
-	var land := center + towards_ship.normalized() * float(island["radius"]) * 0.80
+	var direction := towards_ship.normalized()
+	var shoreline := coast_radius(island, atan2(direction.z, direction.x))
+	var land := center + direction * shoreline * 0.78
 	land.y = ground_height(island, land) + 2.0
 	return land
 

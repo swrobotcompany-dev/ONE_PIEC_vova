@@ -114,8 +114,8 @@ func _build_island(info: Dictionary) -> Node3D:
 	var radius: float = float(info["radius"])
 	var mesh_builder := SurfaceTool.new()
 	mesh_builder.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rings := 32 if quality == 1 else 14
-	var segments := 84 if quality == 1 else 36
+	var rings := 36 if quality == 1 else 18
+	var segments := 96 if quality == 1 else 48
 	var palette := _land_color(info)
 	for ring in range(rings):
 		var inner := radius * float(ring) / float(rings)
@@ -127,17 +127,20 @@ func _build_island(info: Dictionary) -> Node3D:
 			var p2 := _terrain_point(info, inner, b)
 			var p3 := _terrain_point(info, outer, a)
 			var p4 := _terrain_point(info, outer, b)
-			_vertex(mesh_builder, p1, radius, palette)
-			_vertex(mesh_builder, p2, radius, palette)
-			_vertex(mesh_builder, p3, radius, palette)
-			_vertex(mesh_builder, p2, radius, palette)
-			_vertex(mesh_builder, p4, radius, palette)
-			_vertex(mesh_builder, p3, radius, palette)
+			_vertex(mesh_builder, p1, info, palette)
+			_vertex(mesh_builder, p2, info, palette)
+			_vertex(mesh_builder, p3, info, palette)
+			_vertex(mesh_builder, p2, info, palette)
+			_vertex(mesh_builder, p4, info, palette)
+			_vertex(mesh_builder, p3, info, palette)
 	mesh_builder.generate_normals()
 	var land := MeshInstance3D.new()
 	land.mesh = mesh_builder.commit()
 	var land_material := StandardMaterial3D.new()
 	land_material.vertex_color_use_as_albedo = true
+	# Render the ground from both sides as a safeguard against winding
+	# differences in steep procedural cliffs; never show sea through terrain.
+	land_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	land_material.roughness = 0.96
 	land.material_override = land_material
 	root.add_child(land)
@@ -147,7 +150,7 @@ func _build_island(info: Dictionary) -> Node3D:
 	_add_fruit(root, info)
 	_add_details(root, info)
 	var label := Label3D.new()
-	label.text = str(info["name"])
+	label.text = str(info["name"]) + "  •  " + str(info["biome"]).to_upper()
 	label.font_size = 42
 	label.pixel_size = 0.065
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -228,7 +231,7 @@ func _add_details(root: Node3D, info: Dictionary) -> void:
 	rng.seed = int(info["id"]) * 3571 + 219
 	for i in range(15 if quality == 1 else 5):
 		var angle := rng.randf_range(0.0, TAU)
-		var distance := rng.randf_range(0.32, 0.76) * float(info["radius"])
+		var distance := rng.randf_range(0.32, 0.72) * world.coast_radius(info, angle)
 		var x := cos(angle) * distance
 		var z := sin(angle) * distance
 		var h := world.ground_height(info, Vector3(float(info["x"]) + x, 0, float(info["z"]) + z))
@@ -240,7 +243,13 @@ func _add_details(root: Node3D, info: Dictionary) -> void:
 		var mesh := MeshInstance3D.new()
 		mesh.mesh = rock
 		mesh.position = Vector3(x, h, z)
-		mesh.material_override = _mat(Color(0.46, 0.48, 0.47))
+		var rock_tint := Color(0.46, 0.48, 0.47)
+		match str(info["biome"]):
+			"desert", "mesa": rock_tint = Color(0.74, 0.49, 0.29)
+			"snow": rock_tint = Color(0.81, 0.89, 0.92)
+			"volcanic": rock_tint = Color(0.22, 0.23, 0.25)
+			"lagoon": rock_tint = Color(0.52, 0.64, 0.59)
+		mesh.material_override = _mat(rock_tint)
 		root.add_child(mesh)
 	for building in world.buildings_for(info):
 		if building["kind"] == "hut":
@@ -331,15 +340,42 @@ func _box_at(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	parent.add_child(instance)
 
 func _terrain_point(info: Dictionary, radius: float, angle: float) -> Vector3:
-	var x := cos(angle) * radius
-	var z := sin(angle) * radius
+	var coast := world.coast_radius(info, angle)
+	var r := radius / maxf(float(info["radius"]), 1.0) * coast
+	var x := cos(angle) * r
+	var z := sin(angle) * r
 	var world_pos := Vector3(float(info["x"]) + x, 0, float(info["z"]) + z)
 	return Vector3(x, world.ground_height(info, world_pos), z)
 
-func _vertex(tool: SurfaceTool, point: Vector3, radius: float, base: Color) -> void:
-	var t := point.length() / maxf(radius, 1.0)
-	var color := Color(0.87, 0.74, 0.43).lerp(base, clampf((1.0 - t) * 5.0, 0.0, 1.0))
-	tool.set_color(color)
+func _vertex(tool: SurfaceTool, point: Vector3, info: Dictionary, base: Color) -> void:
+	var wpos := Vector3(point.x + float(info["x"]), 0, point.z + float(info["z"]))
+	var shore_ratio := world.terrain_zone(info, wpos)
+	var biome := str(info["biome"])
+	var sand := Color(0.86, 0.72, 0.48)
+	if biome == "snow":
+		sand = Color(0.62, 0.72, 0.77)
+	elif biome == "volcanic":
+		sand = Color(0.17, 0.18, 0.21)
+	elif biome == "mesa":
+		sand = Color(0.71, 0.39, 0.22)
+	elif biome == "desert":
+		sand = Color(0.91, 0.78, 0.50)
+	var beach := smoothstep(0.76, 0.93, shore_ratio)
+	var color := base.lerp(sand, beach)
+	var height_fraction := point.y / maxf(float(info["height"]), 1.0)
+	if height_fraction > 0.54 and shore_ratio < 0.67:
+		var peaks := Color(0.54, 0.55, 0.55)
+		if biome == "snow":
+			peaks = Color(0.94, 0.96, 0.98)
+		elif biome == "volcanic":
+			peaks = Color(0.25, 0.23, 0.26)
+		elif biome == "mesa":
+			peaks = Color(0.79, 0.40, 0.25)
+		elif biome == "desert":
+			peaks = Color(0.83, 0.64, 0.38)
+		color = color.lerp(peaks, clampf((height_fraction - 0.54) * 1.35, 0, 0.82))
+	var jitter := sin(point.x * 0.087 + point.z * 0.049) * 0.045
+	tool.set_color(color.lightened(maxf(0, jitter)).darkened(maxf(0, -jitter)))
 	tool.add_vertex(point)
 
 func _add_palms(root: Node3D, info: Dictionary) -> void:
@@ -362,7 +398,7 @@ func _add_palms(root: Node3D, info: Dictionary) -> void:
 	leaves.instance_count = count
 	for i in range(count):
 		var angle := rng.randf_range(0.0, TAU)
-		var distance := rng.randf_range(0.2, 0.72) * float(info["radius"])
+		var distance := rng.randf_range(0.2, 0.69) * world.coast_radius(info, angle)
 		var x := cos(angle) * distance
 		var z := sin(angle) * distance
 		var h := world.ground_height(info, Vector3(float(info["x"]) + x,
@@ -409,7 +445,10 @@ func _tri(tool: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 
 func _land_color(info: Dictionary) -> Color:
 	match str(info["biome"]):
-		"desert": return Color(0.86, 0.62, 0.34)
+		"desert": return Color(0.87, 0.65, 0.34)
+		"mesa": return Color(0.66, 0.36, 0.22)
+		"lagoon": return Color(0.28, 0.68, 0.51)
+		"volcanic": return Color(0.26, 0.29, 0.28)
 		"rocky": return Color(0.45, 0.53, 0.46)
 		"jungle": return Color(0.16, 0.48, 0.25)
 		"snow": return Color(0.88, 0.93, 0.93)

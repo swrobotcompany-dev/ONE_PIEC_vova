@@ -100,7 +100,7 @@ func _spawn_player(id: int) -> void:
 		"attack_number": 0, "next_attack": 0.0,
 		"attack_start": 0.0, "attack_pending": false, "facing": 0.0,
 		"move_velocity": Vector3.ZERO, "hurt_number": 0, "hits_total": 0,
-		"next_shot": 0.0, "aim_lock_until": 0.0}
+		"next_shot": 0.0, "aim_lock_until": 0.0, "kills": 0, "score": 0}
 	inputs[id] = {"forward": 0.0, "strafe": 0.0, "yaw": 0.0, "sprint": false}
 
 func _peer_connected(id: int) -> void:
@@ -222,7 +222,8 @@ func ship_can_occupy(pos: Vector3) -> bool:
 	if absf(pos.x) > SeaWorld.WORLD_RADIUS or absf(pos.z) > SeaWorld.WORLD_RADIUS:
 		return false
 	for island in world.islands:
-		if _distance(pos, island) < float(island["radius"]) + HULL_CLEARANCE:
+		var angle := atan2(pos.z - float(island["z"]), pos.x - float(island["x"]))
+		if _distance(pos, island) < world.coast_radius(island, angle) + HULL_CLEARANCE:
 			return false
 	return true
 
@@ -247,7 +248,7 @@ func _snap_to_surface(pirate: Dictionary) -> void:
 	var position: Vector3 = pirate["world"]
 	var island := world.closest_island(position)
 	var h := world.ground_height(island, position)
-	if h >= 0.8:
+	if h >= 0.0:
 		pirate["mode"] = "land"
 		position.y = h
 	else:
@@ -371,7 +372,8 @@ func _step_projectiles(delta: float) -> void:
 					var ground_d := Vector2(enemy_pos.x - finish.x,
 						enemy_pos.z - finish.z).length()
 					if ground_d < 2.0:
-						enemy["hp"] = maxi(0, int(enemy["hp"]) - int(shot["damage"]))
+						var old_hp: int = int(enemy["hp"])
+						enemy["hp"] = maxi(0, old_hp - int(shot["damage"]))
 						enemy["hit_number"] = int(enemy.get("hit_number", 0)) + 1
 						guards[i] = enemy
 						guard_groups[island_id] = guards
@@ -379,6 +381,9 @@ func _step_projectiles(delta: float) -> void:
 						if players.has(shooter_id):
 							var shooter: Dictionary = players[shooter_id]
 							shooter["hits_total"] = int(shooter["hits_total"]) + 1
+							if old_hp > 0 and int(enemy["hp"]) == 0:
+								shooter["kills"] = int(shooter["kills"]) + 1
+								shooter["score"] = int(shooter["score"]) + 100
 							players[shooter_id] = shooter
 						blocked = true
 						break
@@ -466,8 +471,12 @@ func _step_attacks() -> void:
 				break
 			var index: int = int(candidate["index"])
 			var target: Dictionary = guards[index]
-			target["hp"] = maxi(0, int(target["hp"]) - (2 if is_zoro else 1))
+			var hp_before: int = int(target["hp"])
+			target["hp"] = maxi(0, hp_before - (2 if is_zoro else 1))
 			target["hit_number"] = int(target.get("hit_number", 0)) + 1
+			if hp_before > 0 and int(target["hp"]) == 0:
+				pirate["kills"] = int(pirate["kills"]) + 1
+				pirate["score"] = int(pirate["score"]) + 100
 			guards[index] = target
 			hits += 1
 		if hits > 0:
@@ -620,7 +629,8 @@ func _make_snapshot() -> Dictionary:
 			"hp": pirate["hp"], "gold": pirate["gold"], "fruits": pirate["fruits"],
 			"one_piece": pirate["one_piece"], "attack_number": pirate["attack_number"],
 			"facing": pirate.get("facing", 0.0), "hurt_number": pirate.get("hurt_number", 0),
-			"hits_total": pirate.get("hits_total", 0)}
+			"hits_total": pirate.get("hits_total", 0),
+			"kills": pirate.get("kills", 0), "score": pirate.get("score", 0)}
 	for island_id in guard_groups:
 		var group: Array = guard_groups[island_id]
 		var near := false

@@ -183,7 +183,9 @@ func _process(delta: float) -> void:
 			int(local_player.get("gold", 0)), bool(local_player.get("one_piece", false)),
 			str(local_player.get("hero", "luffy")), str(local_player.get("mode", "deck")),
 			int(local_player.get("hp", 100)), int(local_player.get("fruits", 0)),
-			int(local_player.get("hits_total", 0)))
+			int(local_player.get("hits_total", 0)),
+			int(local_player.get("kills", 0)), int(local_player.get("score", 0)))
+		hud.update_scoreboard(pirates)
 
 func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 	for id in avatars.keys():

@@ -12,6 +12,7 @@ var help: Label
 var address_field: LineEdit
 var port_field: LineEdit
 var quality_button: Button
+var standings: Label
 var is_low := false
 var heroes: Label
 
@@ -38,6 +39,16 @@ func _ready() -> void:
 	details.add_theme_color_override("font_color", Color(0.98, 0.95, 0.83))
 	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(details)
+	standings = Label.new()
+	standings.anchor_left = 1.0
+	standings.anchor_right = 1.0
+	standings.offset_left = -345.0
+	standings.offset_right = -14.0
+	standings.offset_top = 140.0
+	standings.add_theme_font_size_override("font_size", 17)
+	standings.add_theme_color_override("font_color", Color(1.0, 0.88, 0.55))
+	standings.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(standings)
 	help = Label.new()
 	help.anchor_left = 0.02
 	help.anchor_top = 1.0
@@ -112,6 +123,7 @@ func _ready() -> void:
 	status.add_theme_color_override("font_color", Color(0.82, 0.89, 0.91))
 	contents.add_child(status)
 	details.visible = false
+	standings.visible = false
 	help.visible = false
 	heroes.get_parent().visible = false
 
@@ -144,6 +156,7 @@ func show_error(message: String) -> void:
 func show_connected() -> void:
 	menu.visible = false
 	details.visible = true
+	standings.visible = true
 	help.visible = true
 	heroes.get_parent().visible = true
 	# Free cursor for Diablo-like aiming. RMB drag orbits the camera.
@@ -153,18 +166,35 @@ func show_disconnected(message: String) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	menu.visible = true
 	details.visible = false
+	standings.visible = false
 	help.visible = false
 	heroes.get_parent().visible = false
 	show_error(message)
 
 func update_details(speed: float, location: String, players: int,
 		distance: float, is_helm: bool, gold: int, found: bool,
-		hero: String, mode: String, hp: int, fruits: int, hits: int) -> void:
+		hero: String, mode: String, hp: int, fruits: int, hits: int,
+		kills: int, score: int) -> void:
 	var role := "HELM" if is_helm else mode.to_upper()
 	var goal := "FOUND!" if found else "%.1f km" % (distance / 1000.0)
-	details.text = "  %s   •   %.0f m/s   •   %d pirates   •   HP %d   •   Gold %d   •   Fruits %d   •   Hits %d   •   One Piece %s   •   %s" % [
-		location, absf(speed), players, hp, gold, fruits, hits, goal, role]
+	details.text = "  %s   •   %.0f m/s   •   %d pirates   •   HP %d   •   Gold %d   •   Fruits %d   •   Kills %d   •   Score %d   •   One Piece %s   •   %s" % [
+		location, absf(speed), players, hp, gold, fruits, kills, score, goal, role]
 	heroes.text = ("▶ LUFFY    |    ZORO  [TAB]" if hero == "luffy"
 		else "  LUFFY    |    ▶ ZORO  [TAB]")
 	heroes.add_theme_color_override("font_color",
 		Color(1.0, 0.82, 0.39) if hero == "luffy" else Color(0.42, 0.94, 0.55))
+
+func update_scoreboard(pirates: Dictionary) -> void:
+	var ranking: Array[Dictionary] = []
+	for id in pirates:
+		var p: Dictionary = pirates[id]
+		ranking.append({"id": id, "name": str(p.get("name", "Pirate")),
+			"kills": int(p.get("kills", 0)), "score": int(p.get("score", 0))})
+	ranking.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["score"]) > int(b["score"]))
+	var lines := PackedStringArray(["🏆  PIRATE SCOREBOARD"])
+	for index in range(mini(ranking.size(), 6)):
+		var entry: Dictionary = ranking[index]
+		lines.append("%d. %s    %d pts  (%d KO)" % [
+			index + 1, entry["name"], entry["score"], entry["kills"]])
+	standings.text = "\n".join(lines)

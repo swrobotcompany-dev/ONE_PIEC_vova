@@ -74,6 +74,26 @@ func _initialize() -> void:
 		_fail("Unobstructed shot did not hit pirate")
 		return
 
+	var min_shore := INF
+	var max_shore := 0.0
+	for i in range(72):
+		var radius := world.coast_radius(island, float(i) / 72.0 * TAU)
+		min_shore = minf(min_shore, radius)
+		max_shore = maxf(max_shore, radius)
+	if max_shore - min_shore < 10.0:
+		_fail("Procedural island coastline is still circular")
+		return
+	var varieties: Dictionary = {}
+	for island_entry in world.islands:
+		varieties[str(island_entry["biome"])] = true
+	if varieties.size() < 7:
+		_fail("Not enough unique terrain biomes in the world")
+		return
+	var shoreline_point := Vector3(float(island["x"]) + max_shore + 4.0, 0.0, float(island["z"]))
+	if world.ground_height(island, shoreline_point) >= 0:
+		_fail("World treats sea beyond shoreline as land")
+		return
+
 	var ocean := OceanSurface.new()
 	root.add_child(ocean)
 	ocean.rebuild_at(Vector2(0.0, -380.0))
@@ -81,12 +101,39 @@ func _initialize() -> void:
 		_fail("Ocean mesh missing")
 		return
 	var positions: PackedVector3Array = ocean.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-	for vertex in positions:
-		var distance := Vector2(vertex.x + ocean.position.x,
-			vertex.z + ocean.position.z).distance_to(Vector2(0, -380))
-		if distance < float(island["radius"]) - 9.0:
-			_fail("Ocean vertex penetrated island")
-			return
+	# Verify EVERY water triangle rather than only its vertices. The old
+	# circle-clipping algorithm left triangles over the beach despite
+	# vertices passing the test.
+	if positions.size() % 3 != 0:
+		_fail("Ocean triangles invalid")
+		return
+	for i in range(0, positions.size(), 3):
+		var a: Vector3 = positions[i] + ocean.position
+		var b: Vector3 = positions[i + 1] + ocean.position
+		var c: Vector3 = positions[i + 2] + ocean.position
+		for sample in [a, b, c, (a + b + c) / 3.0]:
+			var dx: float = sample.x - float(island["x"])
+			var dz: float = sample.z - float(island["z"])
+			var d := sqrt(dx * dx + dz * dz)
+			var coast := world.coast_radius(island, atan2(dz, dx))
+			if d < coast + 0.25:
+				_fail("Water triangle overlaps coast at " + str(sample))
+				return
+	# Terrain surface must cover the same coast used by the server.
+	var streamer := IslandStream.new()
+	root.add_child(streamer)
+	var land_root := streamer._build_island(island)
+	var land_mesh := land_root.get_child(0) as MeshInstance3D
+	if land_mesh == null or land_mesh.mesh == null:
+		_fail("Land geometry absent")
+		return
+	var land_vertices: PackedVector3Array = land_mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var upper := -INF
+	for v in land_vertices:
+		upper = maxf(upper, v.y)
+	if upper <= 1.0:
+		_fail("Island ground has no elevation")
+		return
 
 	var hero := HeroVisual.new()
 	root.add_child(hero)
@@ -94,7 +141,7 @@ func _initialize() -> void:
 	if absf(hero.avatar_model.rotation.y - PI) > 0.001:
 		_fail("Rig visual +Z orientation not corrected to Godot -Z")
 		return
-	print("WORLD PASS: land water cutout, house collision, projectile wall/hit, hero forward.")
+	print("WORLD PASS: all water triangles avoid coast, variable island silhouettes, terrain, walls, projectiles, hero.")
 	quit(0)
 
 func _fail(reason: String) -> void:
