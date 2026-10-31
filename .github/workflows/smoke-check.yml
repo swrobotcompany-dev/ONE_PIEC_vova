@@ -1,0 +1,21 @@
+name: Godot smoke checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build lightweight Godot engine image (no export templates)
+        run: docker build --target engine -t grandsea-smoke-engine .
+      - name: Import project and register GDScript classes
+        run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --editor --path /game --import
+      - name: Run procedural island and HUD smoke test
+        run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/smoke.gd
+      - name: Boot multiplayer dedicated server
+        run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --quit-after 5 -- --server
