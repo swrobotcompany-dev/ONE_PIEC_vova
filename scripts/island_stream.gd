@@ -125,6 +125,8 @@ func _build_island(info: Dictionary) -> Node3D:
 	land_material.roughness = 0.96
 	land.material_override = land_material
 	root.add_child(land)
+	_add_shore_foam(root, info)
+	_add_rocks(root, info)
 	if info["biome"] != "snow" and info["biome"] != "desert":
 		_add_palms(root, info)
 	_add_treasure(root, info)
@@ -166,9 +168,68 @@ func _terrain_point(info: Dictionary, radius: float, angle: float) -> Vector3:
 
 func _vertex(tool: SurfaceTool, point: Vector3, radius: float, base: Color) -> void:
 	var t := point.length() / maxf(radius, 1.0)
-	var color := Color(0.87, 0.74, 0.43).lerp(base, clampf((1.0 - t) * 5.0, 0.0, 1.0))
+	var sand := Color(0.87, 0.76, 0.53)
+	if base.b > 0.8:
+		sand = Color(0.84, 0.91, 0.91)
+	var color := sand.lerp(base, clampf((1.0 - t) * 4.7, 0.0, 1.0))
+	# Tiny vertex-based color variation without textures/shader lookups.
+	var noise := sin(point.x * 0.17 + point.z * 0.11) *
+		cos(point.z * 0.19 - point.y * 0.06) * 0.055
+	color = color.lightened(noise) if noise > 0.0 else color.darkened(-noise)
 	tool.set_color(color)
 	tool.add_vertex(point)
+
+# White, translucent surf edge separates islands from flat ocean.
+# One mesh per detailed island, disabled for distant LODs.
+func _add_shore_foam(root: Node3D, info: Dictionary) -> void:
+	var radius: float = float(info["radius"])
+	var surf := TorusMesh.new()
+	surf.inner_radius = radius * 0.985
+	surf.outer_radius = radius * 1.025
+	surf.rings = 5
+	surf.ring_segments = 72
+	var band := MeshInstance3D.new()
+	band.mesh = surf
+	band.position.y = 0.05
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.79, 0.95, 0.93, 0.68)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	band.material_override = material
+	root.add_child(band)
+
+# Scattered low-poly rocks provide depth and scale. MultiMesh keeps each
+# island at one draw call for all of its stones.
+func _add_rocks(root: Node3D, info: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(info["id"]) * 4111 + 77
+	var rock := SphereMesh.new()
+	rock.radius = 1.0
+	rock.height = 2.0
+	rock.radial_segments = 7
+	rock.rings = 4
+	var count := 24 if quality == 1 else 8
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.mesh = rock
+	multi.instance_count = count
+	for i in range(count):
+		var a := rng.randf_range(0.0, TAU)
+		var d := rng.randf_range(0.33, 0.87) * float(info["radius"])
+		var x := cos(a) * d
+		var z := sin(a) * d
+		var y := world.ground_height(info, Vector3(float(info["x"]) + x,
+			0.0, float(info["z"]) + z))
+		var scale := rng.randf_range(0.7, 2.5)
+		var transform := Transform3D(Basis().scaled(Vector3(scale,
+			scale * rng.randf_range(0.55, 1.0), scale)), Vector3(x, y + 0.35, z))
+		multi.set_instance_transform(i, transform)
+	var rocks := MultiMeshInstance3D.new()
+	rocks.multimesh = multi
+	rocks.material_override = _mat(Color(0.41, 0.47, 0.45) if
+		str(info["biome"]) != "desert" else Color(0.68, 0.53, 0.37))
+	root.add_child(rocks)
 
 func _add_palms(root: Node3D, info: Dictionary) -> void:
 	var rng := RandomNumberGenerator.new()
