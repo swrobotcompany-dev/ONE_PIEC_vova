@@ -4,6 +4,7 @@ const DEFAULT_CAMERA_DISTANCE := 22.0
 var world := SeaWorld.new()
 var ship: PirateShip
 var ocean: MeshInstance3D
+var wake: MeshInstance3D
 var islands: IslandStream
 var camera: Camera3D
 var hud: PirateHud
@@ -79,30 +80,48 @@ func _setup_ocean() -> void:
 	ocean = MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(3900.0, 3900.0)
-	plane.subdivide_width = 72
-	plane.subdivide_depth = 72
+	plane.subdivide_width = 106
+	plane.subdivide_depth = 106
 	ocean.mesh = plane
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
-uniform vec4 deep_blue : source_color = vec4(0.025, 0.19, 0.31, 1.0);
-uniform vec4 turquoise : source_color = vec4(0.075, 0.48, 0.57, 1.0);
-varying vec3 ocean_world;
+uniform vec4 ocean_dark : source_color = vec4(0.017, 0.12, 0.21, 1.0);
+uniform vec4 ocean_shallow : source_color = vec4(0.055, 0.46, 0.52, 1.0);
+uniform vec4 foam_tint : source_color = vec4(0.78, 0.96, 0.97, 1.0);
+varying vec3 sea_position;
+varying float swell;
+
 void vertex() {
-	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX.y += sin(w.x * 0.023 + TIME * 1.2) * 0.42;
-	VERTEX.y += cos(w.z * 0.031 + TIME * 1.7) * 0.28;
-	VERTEX.y += sin((w.x + w.z) * 0.058 + TIME * 2.2) * 0.11;
-	ocean_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+    // Two broad Gerstner-like swell components; normals are approximated
+    // analytically to let diffuse lighting read their crests.
+    vec3 absolute_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+    float a = absolute_pos.x * 0.021 + TIME * 1.0;
+    float b = absolute_pos.z * 0.028 + TIME * 1.36;
+    float c = (absolute_pos.x + absolute_pos.z) * 0.051 - TIME * 1.7;
+    float wave = sin(a) * 0.53 + cos(b) * 0.34 + sin(c) * 0.16;
+    VERTEX.y += wave;
+    float ddx = cos(a) * 0.021 * 0.53 + cos(c) * 0.051 * 0.16;
+    float ddz = -sin(b) * 0.028 * 0.34 + cos(c) * 0.051 * 0.16;
+    NORMAL = normalize(vec3(-ddx, 1.0, -ddz));
+    sea_position = absolute_pos;
+    swell = wave;
 }
 void fragment() {
-	float bands = sin(ocean_world.x * 0.048 + TIME * 1.1) *
-		cos(ocean_world.z * 0.042 + TIME * 1.4);
-	ALBEDO = mix(deep_blue.rgb, turquoise.rgb, 0.38 + bands * 0.14);
-	ROUGHNESS = 0.34;
-	METALLIC = 0.08;
-	SPECULAR = 0.66;
+    // Fine-scale ripples are evaluated per pixel, no extra geometry.
+    float ripple = sin(sea_position.x * 0.31 + TIME * 2.2) *
+        cos(sea_position.z * 0.27 - TIME * 1.8);
+    float choppy = sin((sea_position.x + sea_position.z) * 0.12 - TIME * 1.2);
+    float fresnel = pow(1.0 - max(dot(normalize(NORMAL), normalize(VIEW)), 0.0), 3.0);
+    float tint = clamp(0.36 + 0.22 * swell + ripple * 0.08, 0.05, 0.9);
+    vec3 water = mix(ocean_dark.rgb, ocean_shallow.rgb, tint);
+    float crest = smoothstep(0.50, 0.89, swell + ripple * 0.17 + choppy * 0.10);
+    ALBEDO = mix(water, foam_tint.rgb, crest * 0.38);
+    ALBEDO += fresnel * vec3(0.07, 0.14, 0.17);
+    ROUGHNESS = mix(0.41, 0.19, clamp(fresnel * 0.7 + crest * 0.2, 0.0, 1.0));
+    SPECULAR = 0.8;
+    METALLIC = 0.02;
 }
 """
 	var material := ShaderMaterial.new()
@@ -110,6 +129,31 @@ void fragment() {
 	ocean.material_override = material
 	ocean.position.y = -0.3
 	add_child(ocean)
+	# Cheap animated foam trail behind the moving vessel. Only one quad
+	# (no particles or shadows), disabled while the ship is idle.
+	wake = MeshInstance3D.new()
+	var wake_mesh := PlaneMesh.new()
+	wake_mesh.size = Vector2(11.0, 34.0)
+	wake.mesh = wake_mesh
+	var wake_shader := Shader.new()
+	wake_shader.code = """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never;
+void fragment() {
+    float v = UV.y;
+    float side = abs(UV.x - 0.5) * 2.0;
+    float foam = smoothstep(0.55, 0.12, side) *
+        smoothstep(0.01, 0.16, v) * (1.0 - smoothstep(0.60, 1.0, v));
+    float streaks = sin(UV.y * 42.0 - TIME * 4.0 + UV.x * 5.0) * 0.17;
+    ALBEDO = vec3(0.83, 0.96, 1.0);
+    ALPHA = clamp((foam + streaks) * 0.53, 0.0, 0.57);
+}
+"""
+	var wake_material := ShaderMaterial.new()
+	wake_material.shader = wake_shader
+	wake.material_override = wake_material
+	wake.visible = false
+	add_child(wake)
 
 func _host(port: int) -> void:
 	var error := GameNet.host_game(port)
@@ -146,7 +190,8 @@ func _physics_process(delta: float) -> void:
 	var command := {"forward": float(Input.is_key_pressed(KEY_W)) -
 		float(Input.is_key_pressed(KEY_S)),
 		"strafe": float(Input.is_key_pressed(KEY_D)) -
-		float(Input.is_key_pressed(KEY_A))}
+		float(Input.is_key_pressed(KEY_A)),
+		"yaw": cam_yaw}
 	GameNet.submit_local_input(command)
 
 func _process(delta: float) -> void:
@@ -164,6 +209,11 @@ func _process(delta: float) -> void:
 		sin(Time.get_ticks_msec() * 0.0016) * 0.28, 0), minf(delta * 8.0, 1.0))
 	ship.rotation.y = lerp_angle(ship.rotation.y, ship_angle, minf(delta * 8.0, 1.0))
 	ship.rotation.z = sin(Time.get_ticks_msec() * 0.0013) * 0.025
+	# Foamy wake moves with the ship, yet stays level at sea level.
+	wake.visible = absf(speed) > 2.0
+	wake.position = Vector3(ship.position.x, 0.08, ship.position.z) + \
+		Vector3(0, 0, 16.0).rotated(Vector3.UP, ship.rotation.y)
+	wake.rotation.y = ship.rotation.y
 	var focus := ship.position + Vector3(0, 6, 0)
 	var local_id := str(multiplayer.get_unique_id())
 	var pirates: Dictionary = current.get("players", {})
@@ -184,9 +234,13 @@ func _process(delta: float) -> void:
 		var distance := ship_position.distance_to(Vector3(
 			float(world.islands[1]["x"]), 0, float(world.islands[1]["z"])))
 		var local_player: Dictionary = pirates.get(local_id, {})
+		var mode := "SAILING" if int(current.get("helmsman", 0)) == \
+			multiplayer.get_unique_id() else "DECK"
+		if not bool(local_player.get("aboard", true)):
+			mode = "SWIMMING" if bool(local_player.get("swimming", false)) else "WALKING"
 		hud.update_details(speed, str(nearest["name"]), pirates.size(),
 			distance, int(current.get("helmsman", 0)) == multiplayer.get_unique_id(),
-			int(local_player.get("gold", 0)), bool(local_player.get("one_piece", false)))
+			int(local_player.get("gold", 0)), bool(local_player.get("one_piece", false)), mode)
 
 func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 	for id in avatars.keys():
@@ -206,31 +260,73 @@ func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 		var avatar: Node3D = avatars[id]
 		avatar.global_position = avatar.global_position.lerp(destination,
 			minf(delta * 12.0, 1.0))
-		avatar.rotation.y = ship.rotation.y
+		var swimming := bool(pirate.get("swimming", false))
+		var aboard := bool(pirate.get("aboard", true))
+		var heading: float = float(pirate.get("yaw", 0.0))
+		avatar.rotation.y = ship.rotation.y + heading if aboard else heading
+		var pose: Node3D = avatar.get_node("Pose")
+		pose.rotation.x = lerpf(pose.rotation.x, 0.55 if swimming else 0.0,
+			minf(delta * 6.0, 1.0))
+		var bob := sin(Time.get_ticks_msec() * 0.005 + float(id.to_int())) * 0.13
+		pose.position.y = lerpf(pose.position.y, bob if swimming else 0.0,
+			minf(delta * 6.0, 1.0))
+		var left_arm: Node3D = pose.get_node("LeftArm")
+		var right_arm: Node3D = pose.get_node("RightArm")
+		var left_leg: Node3D = pose.get_node("LeftLeg")
+		var right_leg: Node3D = pose.get_node("RightLeg")
+		var phase := Time.get_ticks_msec() * (0.005 if swimming else 0.008)
+		var stroke := sin(phase + float(id.to_int()))
+		var motion := bool(pirate.get("moving", false))
+		var effort := 1.0 if motion else 0.15
+		left_arm.rotation.x = stroke * (0.85 if swimming else 0.45) * effort
+		right_arm.rotation.x = -stroke * (0.85 if swimming else 0.45) * effort
+		left_leg.rotation.x = -stroke * 0.32 * effort
+		right_leg.rotation.x = stroke * 0.32 * effort
 
 func _create_avatar(id: String) -> Node3D:
 	var avatar := Node3D.new()
 	avatar.name = "Pirate_" + id
 	add_child(avatar)
+	var pose := Node3D.new()
+	pose.name = "Pose"
+	avatar.add_child(pose)
 	var jacket := CapsuleMesh.new()
 	jacket.radius = 0.53
 	jacket.height = 2.3
 	var clothes := Color(0.8, 0.14, 0.12) if id == "1" else Color(0.16, 0.40, 0.72)
-	_mesh_on(avatar, jacket, Vector3(0, 1.2, 0), clothes)
+	_mesh_on(pose, jacket, Vector3(0, 1.2, 0), clothes)
 	var head := SphereMesh.new()
 	head.radius = 0.45
 	head.height = 0.9
-	_mesh_on(avatar, head, Vector3(0, 2.65, 0), Color(0.97, 0.74, 0.48))
+	_mesh_on(pose, head, Vector3(0, 2.65, 0), Color(0.97, 0.74, 0.48))
 	var hat := CylinderMesh.new()
 	hat.top_radius = 0.75
 	hat.bottom_radius = 0.94
 	hat.height = 0.18
-	_mesh_on(avatar, hat, Vector3(0, 3.07, 0), Color(0.91, 0.69, 0.24))
+	_mesh_on(pose, hat, Vector3(0, 3.07, 0), Color(0.91, 0.69, 0.24))
 	var crown := CylinderMesh.new()
 	crown.top_radius = 0.48
 	crown.bottom_radius = 0.51
 	crown.height = 0.52
-	_mesh_on(avatar, crown, Vector3(0, 3.31, 0), Color(0.89, 0.69, 0.27))
+	_mesh_on(pose, crown, Vector3(0, 3.31, 0), Color(0.89, 0.69, 0.27))
+	var arm_mesh := CapsuleMesh.new()
+	arm_mesh.radius = 0.18
+	arm_mesh.height = 1.25
+	var leg_mesh := CapsuleMesh.new()
+	leg_mesh.radius = 0.23
+	leg_mesh.height = 1.3
+	for side in [-1, 1]:
+		var sx: float = float(side)
+		var arm := Node3D.new()
+		arm.name = "LeftArm" if side < 0 else "RightArm"
+		arm.position = Vector3(sx * 0.67, 2.05, 0)
+		pose.add_child(arm)
+		_mesh_on(arm, arm_mesh, Vector3(sx * 0.10, -0.55, 0), clothes)
+		var leg := Node3D.new()
+		leg.name = "LeftLeg" if side < 0 else "RightLeg"
+		leg.position = Vector3(sx * 0.31, 0.65, 0)
+		pose.add_child(leg)
+		_mesh_on(leg, leg_mesh, Vector3(0, -0.40, 0), Color(0.31, 0.25, 0.20))
 	return avatar
 
 func _mesh_on(parent: Node3D, shape: Mesh, pos: Vector3, color: Color) -> void:
