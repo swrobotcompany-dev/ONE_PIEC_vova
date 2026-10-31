@@ -142,7 +142,7 @@ render_mode unshaded, cull_disabled, depth_draw_never;
 void fragment() {
     float v = UV.y;
     float side = abs(UV.x - 0.5) * 2.0;
-    float foam = smoothstep(0.55, 0.12, side) *
+    float foam = (1.0 - smoothstep(0.12, 0.55, side)) *
         smoothstep(0.01, 0.16, v) * (1.0 - smoothstep(0.60, 1.0, v));
     float streaks = sin(UV.y * 42.0 - TIME * 4.0 + UV.x * 5.0) * 0.17;
     ALBEDO = vec3(0.83, 0.96, 1.0);
