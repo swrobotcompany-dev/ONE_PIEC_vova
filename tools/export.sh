@@ -5,7 +5,7 @@ mkdir -p /dist/windows /dist/linux
 bash tools/fetch_models.sh
 godot --headless --editor --path /game --import
 # Validate procedural islands, generated meshes and HUD without a window.
-timeout 75s godot --headless --path /game --script res://tools/smoke.gd
+timeout -k 3s 22s godot --headless --path /game --script res://tools/smoke.gd
 godot --headless --path /game --script res://tools/gameplay_test.gd
 godot --headless --path /game --script res://tools/combat_test.gd
 # Boot a real headless server briefly to check the multiplayer scene.

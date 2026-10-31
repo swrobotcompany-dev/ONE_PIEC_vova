@@ -18,7 +18,7 @@ jobs:
       - name: Import project and register GDScript classes
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --editor --path /game --import
       - name: Run procedural island and HUD smoke test
-        run: timeout 75s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/smoke.gd
+        run: timeout -k 3s 22s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/smoke.gd
       - name: Check coastline collision, swimming, pirate spawns
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/gameplay_test.gd
       - name: Combat timing and directional hit validation
