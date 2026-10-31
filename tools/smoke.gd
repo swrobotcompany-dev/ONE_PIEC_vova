@@ -6,6 +6,17 @@ func _initialize() -> void:
 		push_error("World generation failed")
 		quit(1)
 		return
+	if not ResourceLoader.exists("res://assets/characters/rogue.glb") or not ResourceLoader.exists("res://assets/characters/barbarian.glb"):
+		push_error("Required 3D models missing")
+		quit(1)
+		return
+	var hero := HeroVisual.new()
+	root.add_child(hero)
+	hero.set_hero("zoro")
+	hero.set_hero("luffy")
+	var guard := HeroVisual.new()
+	root.add_child(guard)
+	guard.set_hero("guard")
 	var vessel := PirateShip.new()
 	root.add_child(vessel)
 	var stream := IslandStream.new()
@@ -18,6 +29,6 @@ func _initialize() -> void:
 		return
 	var ui := PirateHud.new()
 	root.add_child(ui)
-	print("SMOKE PASS: %d islands, ship meshes, terrain, vegetation, HUD." %
+	print("SMOKE PASS: %d islands, rigged characters, ship, terrain, vegetation, HUD." %
 		data.islands.size())
 	quit(0)

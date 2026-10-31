@@ -2,6 +2,7 @@
 set -euo pipefail
 cd /game
 mkdir -p /dist/windows /dist/linux
+bash tools/fetch_models.sh
 godot --headless --editor --path /game --import
 # Validate procedural islands, generated meshes and HUD without a window.
 godot --headless --path /game --script res://tools/smoke.gd

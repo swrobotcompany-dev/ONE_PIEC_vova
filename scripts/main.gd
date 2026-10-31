@@ -8,6 +8,8 @@ var islands: IslandStream
 var camera: Camera3D
 var hud: PirateHud
 var avatars: Dictionary = {}
+var guardians: Dictionary = {}
+var last_locations: Dictionary = {}
 var cam_yaw := 0.2
 var cam_pitch := 0.30
 var camera_distance := DEFAULT_CAMERA_DISTANCE
@@ -99,10 +101,14 @@ void vertex() {
 void fragment() {
 	float bands = sin(ocean_world.x * 0.048 + TIME * 1.1) *
 		cos(ocean_world.z * 0.042 + TIME * 1.4);
-	ALBEDO = mix(deep_blue.rgb, turquoise.rgb, 0.38 + bands * 0.14);
-	ROUGHNESS = 0.34;
-	METALLIC = 0.08;
-	SPECULAR = 0.66;
+	float ripples = sin(ocean_world.x * 0.23 + TIME * 3.2) *
+		cos(ocean_world.z * 0.17 + TIME * 2.6);
+	float foam = smoothstep(0.85, 1.0, bands * 0.3 + ripples * 0.63);
+	ALBEDO = mix(mix(deep_blue.rgb, turquoise.rgb, 0.48 + bands * 0.20),
+		vec3(0.57, 0.89, 0.91), foam * 0.31);
+	ROUGHNESS = 0.26;
+	METALLIC = 0.06;
+	SPECULAR = 0.77;
 }
 """
 	var material := ShaderMaterial.new()
@@ -146,7 +152,8 @@ func _physics_process(delta: float) -> void:
 	var command := {"forward": float(Input.is_key_pressed(KEY_W)) -
 		float(Input.is_key_pressed(KEY_S)),
 		"strafe": float(Input.is_key_pressed(KEY_D)) -
-		float(Input.is_key_pressed(KEY_A))}
+		float(Input.is_key_pressed(KEY_A)),
+		"yaw": cam_yaw}
 	GameNet.submit_local_input(command)
 
 func _process(delta: float) -> void:
@@ -168,6 +175,7 @@ func _process(delta: float) -> void:
 	var local_id := str(multiplayer.get_unique_id())
 	var pirates: Dictionary = current.get("players", {})
 	_sync_avatars(pirates, delta)
+	_sync_guards(current.get("guards", {}), focus, delta)
 	if avatars.has(local_id):
 		focus = avatars[local_id].global_position + Vector3(0, 2.5, 0)
 	islands.set_focus(focus)
@@ -186,62 +194,75 @@ func _process(delta: float) -> void:
 		var local_player: Dictionary = pirates.get(local_id, {})
 		hud.update_details(speed, str(nearest["name"]), pirates.size(),
 			distance, int(current.get("helmsman", 0)) == multiplayer.get_unique_id(),
-			int(local_player.get("gold", 0)), bool(local_player.get("one_piece", false)))
+			int(local_player.get("gold", 0)), bool(local_player.get("one_piece", false)),
+			str(local_player.get("hero", "luffy")), str(local_player.get("mode", "deck")),
+			int(local_player.get("hp", 100)), int(local_player.get("fruits", 0)))
 
 func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 	for id in avatars.keys():
 		if not pirates.has(id):
 			avatars[id].queue_free()
 			avatars.erase(id)
+			last_locations.erase(id)
 	for id in pirates:
 		var pirate: Dictionary = pirates[id]
-		var destination: Vector3
-		if bool(pirate.get("aboard", true)):
-			destination = ship.to_global(pirate["local"])
+		var target: Vector3
+		var mode := str(pirate.get("mode", "deck"))
+		if mode == "deck":
+			target = ship.to_global(pirate["local"])
 		else:
-			destination = pirate["world"]
+			target = pirate["world"]
 		if not avatars.has(id):
-			avatars[id] = _create_avatar(id)
-			avatars[id].global_position = destination
-		var avatar: Node3D = avatars[id]
-		avatar.global_position = avatar.global_position.lerp(destination,
+			var created := HeroVisual.new()
+			created.name = "Pirate_" + id
+			add_child(created)
+			created.set_hero(str(pirate.get("hero", "luffy")))
+			created.global_position = target
+			avatars[id] = created
+		var avatar: HeroVisual = avatars[id]
+		avatar.set_hero(str(pirate.get("hero", "luffy")))
+		var distance := avatar.global_position.distance_to(target)
+		avatar.global_position = target if distance > 40.0 else avatar.global_position.lerp(target,
 			minf(delta * 12.0, 1.0))
-		avatar.rotation.y = ship.rotation.y
+		var moving := distance > 0.02
+		avatar.set_motion(mode, moving)
+		avatar.show_attack(int(pirate.get("attack_number", 0)))
+		if mode == "deck":
+			avatar.rotation.y = ship.rotation.y
+		else:
+			var velocity: Vector3 = target - last_locations.get(id, target)
+			if velocity.length_squared() > 0.01:
+				avatar.rotation.y = atan2(-velocity.x, -velocity.z)
+		last_locations[id] = target
 
-func _create_avatar(id: String) -> Node3D:
-	var avatar := Node3D.new()
-	avatar.name = "Pirate_" + id
-	add_child(avatar)
-	var jacket := CapsuleMesh.new()
-	jacket.radius = 0.53
-	jacket.height = 2.3
-	var clothes := Color(0.8, 0.14, 0.12) if id == "1" else Color(0.16, 0.40, 0.72)
-	_mesh_on(avatar, jacket, Vector3(0, 1.2, 0), clothes)
-	var head := SphereMesh.new()
-	head.radius = 0.45
-	head.height = 0.9
-	_mesh_on(avatar, head, Vector3(0, 2.65, 0), Color(0.97, 0.74, 0.48))
-	var hat := CylinderMesh.new()
-	hat.top_radius = 0.75
-	hat.bottom_radius = 0.94
-	hat.height = 0.18
-	_mesh_on(avatar, hat, Vector3(0, 3.07, 0), Color(0.91, 0.69, 0.24))
-	var crown := CylinderMesh.new()
-	crown.top_radius = 0.48
-	crown.bottom_radius = 0.51
-	crown.height = 0.52
-	_mesh_on(avatar, crown, Vector3(0, 3.31, 0), Color(0.89, 0.69, 0.27))
-	return avatar
-
-func _mesh_on(parent: Node3D, shape: Mesh, pos: Vector3, color: Color) -> void:
-	var instance := MeshInstance3D.new()
-	instance.mesh = shape
-	instance.position = pos
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = 0.87
-	instance.material_override = mat
-	parent.add_child(instance)
+func _sync_guards(groups: Dictionary, focus: Vector3, delta: float) -> void:
+	var visible_keys: Dictionary = {}
+	for island_id in groups:
+		var group: Array = groups[island_id]
+		for i in range(group.size()):
+			var enemy: Dictionary = group[i]
+			if int(enemy.get("hp", 0)) <= 0:
+				continue
+			var pos: Vector3 = enemy["pos"]
+			if pos.distance_to(focus) > 240.0:
+				continue
+			var key := island_id + "_" + str(i)
+			visible_keys[key] = true
+			if not guardians.has(key):
+				var guard := HeroVisual.new()
+				guard.name = "PirateGuard_" + key
+				add_child(guard)
+				guard.set_hero("guard")
+				guard.global_position = pos
+				guardians[key] = guard
+			var visual: HeroVisual = guardians[key]
+			var old: Vector3 = visual.global_position
+			visual.global_position = old.lerp(pos, minf(delta * 8.0, 1.0))
+			visual.set_motion("land", old.distance_to(pos) > 0.02)
+	for key in guardians.keys():
+		if not visible_keys.has(key):
+			guardians[key].queue_free()
+			guardians.erase(key)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not GameNet.is_active or hud == null:
@@ -265,3 +286,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			GameNet.toggle_shore()
 		elif event.keycode == KEY_G:
 			GameNet.collect_treasure()
+		elif event.keycode == KEY_TAB:
+			GameNet.switch_character()
+		elif event.keycode == KEY_SPACE:
+			GameNet.attack()

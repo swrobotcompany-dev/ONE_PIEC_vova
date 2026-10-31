@@ -31,4 +31,6 @@ RUN curl --fail --location --retry 3 \
  && rm -rf /tmp/tpl /tmp/templates.tpz
 WORKDIR /game
 COPY . /game
+# Bundle exactly two pinned CC0 rigged GLBs (~7.23 MB).
+RUN bash tools/fetch_models.sh
 CMD ["bash", "tools/export.sh"]

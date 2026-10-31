@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build lightweight Godot engine image (no export templates)
         run: docker build --target engine -t grandsea-smoke-engine .
+      - name: Fetch compact CC0 character models
+        run: bash tools/fetch_models.sh
       - name: Import project and register GDScript classes
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --editor --path /game --import
       - name: Run procedural island and HUD smoke test

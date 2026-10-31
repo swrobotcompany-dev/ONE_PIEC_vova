@@ -13,6 +13,7 @@ var address_field: LineEdit
 var port_field: LineEdit
 var quality_button: Button
 var is_low := false
+var heroes: Label
 
 func _ready() -> void:
 	var root := Control.new()
@@ -41,11 +42,25 @@ func _ready() -> void:
 	help.anchor_left = 0.02
 	help.anchor_top = 1.0
 	help.offset_top = -46
-	help.text = "WASD • walk / sail   |   E • helm   |   F • shore / board   |   G • treasure   |   Mouse • camera   |   Esc • cursor"
+	help.text = "WASD Move/Sail    •    TAB Luffy ↔ Zoro    •    SPACE Attack    •    E Helm    •    F Swim/Board    •    G Fruit    •    Esc Mouse"
 	help.add_theme_color_override("font_color", Color(0.95, 0.91, 0.77))
 	help.add_theme_font_size_override("font_size", 17)
 	help.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(help)
+	var badge := PanelContainer.new()
+	badge.anchor_left = 1.0
+	badge.anchor_right = 1.0
+	badge.offset_left = -345
+	badge.offset_right = -15
+	badge.offset_top = 69
+	badge.offset_bottom = 119
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_theme_stylebox_override("panel", _panel(Color(0.05, 0.13, 0.20, 0.91)))
+	root.add_child(badge)
+	heroes = Label.new()
+	heroes.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heroes.add_theme_font_size_override("font_size", 18)
+	badge.add_child(heroes)
 	menu = CenterContainer.new()
 	menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	menu.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -98,6 +113,7 @@ func _ready() -> void:
 	contents.add_child(status)
 	details.visible = false
 	help.visible = false
+	heroes.get_parent().visible = false
 
 func _panel(color: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -129,6 +145,7 @@ func show_connected() -> void:
 	menu.visible = false
 	details.visible = true
 	help.visible = true
+	heroes.get_parent().visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func show_disconnected(message: String) -> void:
@@ -136,11 +153,17 @@ func show_disconnected(message: String) -> void:
 	menu.visible = true
 	details.visible = false
 	help.visible = false
+	heroes.get_parent().visible = false
 	show_error(message)
 
 func update_details(speed: float, location: String, players: int,
-		distance: float, is_helm: bool, gold: int, found: bool) -> void:
-	var role := "STEERING" if is_helm else "CREW"
-	var treasure := "FOUND!" if found else "%.1f km" % (distance / 1000.0)
-	details.text = "  %s  |  %.0f m/s  |  %d pirates  |  Gold %d  |  One Piece %s  |  %s" % [
-		location, absf(speed), players, gold, treasure, role]
+		distance: float, is_helm: bool, gold: int, found: bool,
+		hero: String, mode: String, hp: int, fruits: int) -> void:
+	var role := "HELM" if is_helm else mode.to_upper()
+	var goal := "FOUND!" if found else "%.1f km" % (distance / 1000.0)
+	details.text = "  %s   •   %.0f m/s   •   %d pirates   •   HP %d   •   Gold %d   •   Fruits %d   •   One Piece %s   •   %s" % [
+		location, absf(speed), players, hp, gold, fruits, goal, role]
+	heroes.text = ("▶ LUFFY    |    ZORO  [TAB]" if hero == "luffy"
+		else "  LUFFY    |    ▶ ZORO  [TAB]")
+	heroes.add_theme_color_override("font_color",
+		Color(1.0, 0.82, 0.39) if hero == "luffy" else Color(0.42, 0.94, 0.55))

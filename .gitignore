@@ -3,6 +3,7 @@
 .import/
 dist/
 saves/
+assets/characters/*.glb
 *.log
 *.tmp
 .DS_Store

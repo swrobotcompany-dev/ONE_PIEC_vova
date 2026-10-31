@@ -1,0 +1,11 @@
+KayKit Adventurers Character Pack (1.0)
+Author: Kay Lousberg (https://www.kaylousberg.com)
+Original repository: https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
+License: Creative Commons Zero (CC0) 1.0
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Only Rogue.glb and Barbarian.glb rigs/animations are used
+(7,229,552 bytes combined), downloaded during Docker export from pinned
+upstream commit 672074b73ba276876a19e8816ecdc5241817ab47.
+Custom costumes, hair and sword accessories are small procedural meshes.
+These are stylized fan-game adaptations, not official One Piece models.

@@ -1,11 +1,22 @@
 # ONE PIECE: GRAND SEA
 
-Native low-poly 3D pirate adventure inspired by the open-sea exploration of Sea of Thieves, set in a One Piece-inspired world.
+Нативная 3D-игра на Godot 4 (Compatibility renderer): морское приключение, вдохновлённое One Piece и Sea of Thieves. Игра запускается как отдельное приложение для Windows или Linux, **не через браузер**.
 
-**Status:** first playable technical prototype. Godot 4.7.2 (GDScript, Compatibility renderer), ENet/UDP local multiplayer, Docker-hosted dedicated server, deterministic procedural islands and island streaming. Original placeholder meshes only; no commercial assets.
+## Содержимое
 
-See [QUICKSTART.md](QUICKSTART.md) for running and building the game.
+- Океан и процедурный архипелаг, острова с растительностью и поселениями;
+- Парусный корабль, штурвал, запрет проникновения корпуса в берег;
+- Луффи и Зоро (**Tab** переключает персонажа), разные приёмы;
+- Пираты-охранники, которые преследуют игроков и атакуют;
+- Дьявольские плоды, золото и главный приз на Laugh Tale;
+- Отдельное плавание в воде и ходьба по суше;
+- Мультиплеер в локальной сети (Godot ENet/UDP);
+- Docker-сервер и сборка нативных клиентов GitHub Actions.
 
-**Controls:** W/S sail and A/D steer at the helm; E toggle helm, WASD move on deck/land, F disembark/board near shore, mouse camera, Esc release mouse. The server is authoritative, with one shared starter ship.
+Для героев в игровой сборке используются только **две анимированные модели KayKit Adventurers** (CC0), вместе ~7.23 МБ, с небольшими аксессуарами Луффи и Зоро. [Лицензия](assets/characters/ASSET_LICENSE.txt).
 
-The first milestone is a playable proof of concept rather than a complete Sea of Thieves equivalent.
+## Запуск
+
+Смотрите [QUICKSTART.md](QUICKSTART.md). Движок вручную ставить не нужно: Docker собирает игру, а готовые сборки доступны в GitHub Actions.
+
+**Статус:** развивающийся технический прототип. Модели — стилизованные фан-версии персонажей, а не официальные ресурсы аниме. Производительность и мультиплеер нужно проверять на целевых слабых ПК.
