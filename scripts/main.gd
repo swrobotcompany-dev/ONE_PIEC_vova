@@ -10,6 +10,7 @@ var hud: PirateHud
 var avatars: Dictionary = {}
 var guardians: Dictionary = {}
 var last_locations: Dictionary = {}
+var last_deck_positions: Dictionary = {}
 var cam_yaw := 0.2
 var cam_pitch := 0.30
 var camera_distance := DEFAULT_CAMERA_DISTANCE
@@ -204,6 +205,7 @@ func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 			avatars[id].queue_free()
 			avatars.erase(id)
 			last_locations.erase(id)
+			last_deck_positions.erase(id)
 	for id in pirates:
 		var pirate: Dictionary = pirates[id]
 		var target: Vector3
@@ -225,6 +227,11 @@ func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 		avatar.global_position = target if distance > 40.0 else avatar.global_position.lerp(target,
 			minf(delta * 12.0, 1.0))
 		var moving := distance > 0.02
+		if mode == "deck":
+			var deck_loc: Vector3 = pirate["local"]
+			var previous: Vector3 = last_deck_positions.get(id, deck_loc)
+			moving = previous.distance_to(deck_loc) > 0.02
+			last_deck_positions[id] = deck_loc
 		avatar.set_motion(mode, moving)
 		avatar.show_attack(int(pirate.get("attack_number", 0)))
 		if mode == "deck":
