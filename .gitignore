@@ -1,0 +1,10 @@
+# Godot / game output
+.godot/
+.import/
+dist/
+saves/
+*.log
+*.tmp
+.DS_Store
+.idea/
+.vscode/

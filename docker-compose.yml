@@ -1,0 +1,23 @@
+services:
+  server:
+    build:
+      context: .
+      target: server
+    image: one-piece-grand-sea-server:local
+    restart: unless-stopped
+    ports:
+      - "7777:7777/udp"
+    environment:
+      - XDG_DATA_HOME=/saves
+    volumes:
+      - ./saves:/saves
+
+  builder:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: builder
+    image: one-piece-grand-sea-builder:local
+    volumes:
+      - ./dist:/dist
+    command: ["bash", "tools/export.sh"]

@@ -1,0 +1,25 @@
+name: Native Godot client builds
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Godot export container
+        run: docker build --target builder -t grandsea-builder .
+      - name: Export Linux and Windows clients
+        run: |
+          mkdir -p dist
+          docker run --rm -v "$PWD/dist:/dist" grandsea-builder
+      - name: Upload native clients
+        uses: actions/upload-artifact@v4
+        with:
+          name: grandsea-native-clients
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
