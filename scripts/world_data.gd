@@ -87,7 +87,9 @@ func ensure_ship_clear(position: Vector3) -> Vector3:
 				corrected.z - float(island["z"]))
 			var minimum: float = float(island["radius"]) + SHIP_CLEARANCE + 0.5
 			if offset.length_squared() < minimum * minimum:
-				var direction := offset.normalized() if offset.length() > 0.01 					else Vector2(1.0, 0.0)
+				var direction := Vector2(1.0, 0.0)
+				if offset.length_squared() > 0.0001:
+					direction = offset.normalized()
 				corrected.x = float(island["x"]) + direction.x * minimum
 				corrected.z = float(island["z"]) + direction.y * minimum
 				changed = true
