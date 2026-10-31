@@ -1,7 +1,7 @@
 extends SceneTree
 
 func _initialize() -> void:
-	var server := load("res://scripts/network_session.gd").new()
+	var server = load("res://scripts/network_session.gd").new()
 	root.add_child(server)
 	if not server.ship_can_occupy(Vector3(0, 0, -160)):
 		_fail("Safe sea spawn rejected")

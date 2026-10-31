@@ -246,7 +246,7 @@ func _sync_guards(groups: Dictionary, focus: Vector3, delta: float) -> void:
 			var pos: Vector3 = enemy["pos"]
 			if pos.distance_to(focus) > 240.0:
 				continue
-			var key := island_id + "_" + str(i)
+			var key: String = str(island_id) + "_" + str(i)
 			visible_keys[key] = true
 			if not guardians.has(key):
 				var guard := HeroVisual.new()
