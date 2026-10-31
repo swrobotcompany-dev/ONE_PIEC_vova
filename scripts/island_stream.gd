@@ -1,9 +1,9 @@
 class_name IslandStream
 extends Node3D
 
-const NEAR_DISTANCE := 680.0
+const NEAR_DISTANCE := 950.0
 const FAR_DISTANCE := 3300.0
-const MAX_DETAILED := 3
+const MAX_DETAILED := 4
 const UPDATE_EVERY := 0.5
 
 var world := SeaWorld.new()
@@ -114,8 +114,8 @@ func _build_island(info: Dictionary) -> Node3D:
 	var radius: float = float(info["radius"])
 	var mesh_builder := SurfaceTool.new()
 	mesh_builder.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rings := 24 if quality == 1 else 14
-	var segments := 64 if quality == 1 else 36
+	var rings := 32 if quality == 1 else 14
+	var segments := 84 if quality == 1 else 36
 	var palette := _land_color(info)
 	for ring in range(rings):
 		var inner := radius * float(ring) / float(rings)
@@ -226,7 +226,7 @@ func _add_details(root: Node3D, info: Dictionary) -> void:
 	# A few large landmarks read better than hundreds of draw calls.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(info["id"]) * 3571 + 219
-	for i in range(7 if quality == 1 else 3):
+	for i in range(15 if quality == 1 else 5):
 		var angle := rng.randf_range(0.0, TAU)
 		var distance := rng.randf_range(0.32, 0.76) * float(info["radius"])
 		var x := cos(angle) * distance
@@ -242,22 +242,18 @@ func _add_details(root: Node3D, info: Dictionary) -> void:
 		mesh.position = Vector3(x, h, z)
 		mesh.material_override = _mat(Color(0.46, 0.48, 0.47))
 		root.add_child(mesh)
-	if int(info["id"]) == 0:
-		_add_hut(root, info, Vector2(-48, -34))
-		_add_hut(root, info, Vector2(44, 20))
-		_add_watchtower(root, info, Vector2(-18, 52))
-	elif int(info["id"]) == 1:
-		_add_watchtower(root, info, Vector2(-33, 56))
-		_add_hut(root, info, Vector2(42, -25))
-	elif int(info["id"]) % 4 == 0:
-		_add_hut(root, info, Vector2(-20, 29))
-		_add_watchtower(root, info, Vector2(30, 19))
+	for building in world.buildings_for(info):
+		if building["kind"] == "hut":
+			_add_hut(root, info, building["offset"])
+		else:
+			_add_watchtower(root, info, building["offset"])
 
 func _add_hut(root: Node3D, info: Dictionary, offset: Vector2) -> void:
 	var hut := Node3D.new()
 	var point := Vector3(float(info["x"]) + offset.x, 0, float(info["z"]) + offset.y)
 	hut.position = Vector3(offset.x, world.ground_height(info, point), offset.y)
 	root.add_child(hut)
+	_add_solid_body(hut, Vector3(0, 3.6, 0), Vector3(12, 7.2, 10))
 	# Walls, porch, door, windows and roof: small primitive meshes, no textures.
 	_box_at(hut, Vector3(0, 3.6, 0), Vector3(12, 7.2, 10), Color(0.74, 0.57, 0.36))
 	_box_at(hut, Vector3(0, 0.28, -7.3), Vector3(15, 0.5, 5.5), Color(0.42, 0.27, 0.16))
@@ -295,6 +291,7 @@ func _add_watchtower(root: Node3D, info: Dictionary, offset: Vector2) -> void:
 	var tower := Node3D.new()
 	tower.position = Vector3(offset.x, height, offset.y)
 	root.add_child(tower)
+	_add_solid_body(tower, Vector3(0, 5.5, 0), Vector3(8, 11, 8))
 	_box_at(tower, Vector3(0, 10.0, 0), Vector3(8, 0.85, 8), Color(0.55, 0.34, 0.17))
 	for x in [-3.1, 3.1]:
 		for z in [-3.1, 3.1]:
@@ -309,6 +306,20 @@ func _add_watchtower(root: Node3D, info: Dictionary, offset: Vector2) -> void:
 	flag.rotation_degrees.x = 90
 	flag.material_override = _mat(Color(0.84, 0.24, 0.16))
 	tower.add_child(flag)
+
+func _add_solid_body(parent: Node3D, center: Vector3, size: Vector3) -> void:
+	# Local visual collision duplicates the server's shared AABB footprints;
+	# it also allows future camera raycasts and physics interactions.
+	var solid := StaticBody3D.new()
+	solid.collision_layer = 1
+	solid.collision_mask = 0
+	solid.position = center
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	solid.add_child(collision)
+	parent.add_child(solid)
 
 func _box_at(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	var box := BoxMesh.new()
@@ -340,7 +351,7 @@ func _add_palms(root: Node3D, info: Dictionary) -> void:
 	trunk.height = 7.5
 	trunk.radial_segments = 5
 	var crown := _make_palm_fronds()
-	var count := 18 if quality == 1 else 7
+	var count := 42 if quality == 1 else 10
 	var stems := MultiMesh.new()
 	stems.transform_format = MultiMesh.TRANSFORM_3D
 	stems.mesh = trunk

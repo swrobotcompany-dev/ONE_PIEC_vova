@@ -3,9 +3,10 @@ extends Node3D
 const DEFAULT_CAMERA_DISTANCE := 22.0
 var world := SeaWorld.new()
 var ship: PirateShip
-var ocean: MeshInstance3D
+var ocean: OceanSurface
 var islands: IslandStream
 var camera: Camera3D
+var aiming: AimingView
 var hud: PirateHud
 var avatars: Dictionary = {}
 var guardians: Dictionary = {}
@@ -42,6 +43,9 @@ func _ready() -> void:
 	camera.current = true
 	camera.far = 4600.0
 	add_child(camera)
+	aiming = AimingView.new()
+	aiming.active_camera = camera
+	add_child(aiming)
 	hud = PirateHud.new()
 	add_child(hud)
 	hud.host_pressed.connect(_host)
@@ -81,41 +85,9 @@ func _setup_environment() -> void:
 	add_child(sun)
 
 func _setup_ocean() -> void:
-	ocean = MeshInstance3D.new()
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(3900.0, 3900.0)
-	plane.subdivide_width = 72
-	plane.subdivide_depth = 72
-	ocean.mesh = plane
-	var shader := preload("res://shaders/ocean.gdshader")
-	var material := ShaderMaterial.new()
-	material.shader = shader
-	ocean.material_override = material
-	ocean.position.y = -0.7
+	ocean = OceanSurface.new()
 	add_child(ocean)
-	_update_water_masks(Vector3.ZERO)
-
-func _update_water_masks(focus: Vector3) -> void:
-	if ocean == null:
-		return
-	var closest: Array[Dictionary] = []
-	for island in world.islands:
-		var center := Vector2(float(island["x"]), float(island["z"]))
-		var d := center.distance_to(Vector2(focus.x, focus.z))
-		if d < 2300.0 + float(island["radius"]):
-			closest.append({"info": island, "distance": d})
-	closest.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return float(a["distance"]) < float(b["distance"]))
-	var masks := PackedVector4Array()
-	for i in range(8):
-		if i < closest.size():
-			var info: Dictionary = closest[i]["info"]
-			masks.append(Vector4(float(info["x"]), float(info["z"]),
-				float(info["radius"]), float(info["height"])))
-		else:
-			masks.append(Vector4.ZERO)
-	var water_material := ocean.material_override as ShaderMaterial
-	water_material.set_shader_parameter("land_masks", masks)
+	ocean.update_focus(Vector3(0, 0, -160))
 
 func _host(port: int) -> void:
 	var error := GameNet.host_game(port)
@@ -179,18 +151,16 @@ func _process(delta: float) -> void:
 		focus = avatars[local_id].global_position + Vector3(0, 2.5, 0)
 	_sync_guards(current.get("guards", {}), focus, delta)
 	islands.set_focus(focus)
-	ocean.position.x = focus.x
-	ocean.position.z = focus.z
-	ocean_mask_clock += delta
-	if ocean_mask_clock > 0.35:
-		ocean_mask_clock = 0.0
-		_update_water_masks(focus)
+	ocean.update_focus(focus)
 	var orbit := Vector3(sin(cam_yaw) * cos(cam_pitch), sin(cam_pitch),
 		cos(cam_yaw) * cos(cam_pitch))
 	var target_camera := focus + orbit * camera_distance
 	camera.global_position = camera.global_position.lerp(target_camera,
 		minf(delta * 7.0, 1.0))
 	camera.look_at(focus, Vector3.UP)
+	var active_pirate: Node3D = avatars.get(local_id, null)
+	aiming.update_view(delta, active_pirate, cam_yaw, current,
+		GameNet.is_active and active_pirate != null)
 	if GameNet.is_active:
 		var nearest := world.closest_island(focus)
 		var distance := ship_position.distance_to(Vector3(
@@ -240,9 +210,11 @@ func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 		avatar.show_attack(int(pirate.get("attack_number", 0)))
 		avatar.show_hit(int(pirate.get("hurt_number", 0)))
 		if mode == "deck":
-			avatar.rotation.y = ship.rotation.y + float(pirate.get("facing", 0.0))
+			avatar.rotation.y = lerp_angle(avatar.rotation.y,
+				float(pirate.get("facing", 0.0)), minf(delta * 12.0, 1.0))
 		else:
-			avatar.rotation.y = float(pirate.get("facing", 0.0))
+			avatar.rotation.y = lerp_angle(avatar.rotation.y,
+				float(pirate.get("facing", 0.0)), minf(delta * 12.0, 1.0))
 		last_locations[id] = target
 
 func _sync_guards(groups: Dictionary, focus: Vector3, delta: float) -> void:
@@ -289,15 +261,16 @@ func _sync_guards(groups: Dictionary, focus: Vector3, delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not GameNet.is_active or hud == null:
 		return
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 		cam_yaw -= event.relative.x * 0.004
 		cam_pitch = clampf(cam_pitch + event.relative.y * 0.003, -0.08, 0.90)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-				GameNet.attack()
-			else:
-				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			var local_id := str(multiplayer.get_unique_id())
+			if avatars.has(local_id):
+				var local_player: Dictionary = GameNet.state.get("players", {}).get(local_id, {})
+				aiming.shoot(avatars[local_id].global_position, cam_yaw,
+					str(local_player.get("hero", "luffy")))
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			camera_distance = maxf(camera_distance - 2.0, 10.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:

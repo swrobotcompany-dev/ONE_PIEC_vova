@@ -77,3 +77,68 @@ func coast_point(island: Dictionary, ship_position: Vector3) -> Vector3:
 	var land := center + towards_ship.normalized() * float(island["radius"]) * 0.80
 	land.y = ground_height(island, land) + 2.0
 	return land
+
+
+# Shared visual/server footprints: never permit a client to walk through a
+# building merely because the server has no rendered scene.
+func buildings_for(island: Dictionary) -> Array[Dictionary]:
+	var id := int(island["id"])
+	var specs: Array[Dictionary] = []
+	if id == 0:
+		specs = [{"kind": "hut", "offset": Vector2(-48, -34)},
+			{"kind": "hut", "offset": Vector2(44, 20)},
+			{"kind": "tower", "offset": Vector2(-18, 52)}]
+	elif id == 1:
+		specs = [{"kind": "tower", "offset": Vector2(-33, 56)},
+			{"kind": "hut", "offset": Vector2(42, -25)}]
+	elif id % 4 == 0:
+		specs = [{"kind": "hut", "offset": Vector2(-20, 29)},
+			{"kind": "tower", "offset": Vector2(30, 19)}]
+	var out: Array[Dictionary] = []
+	for spec in specs:
+		var ofs: Vector2 = spec["offset"]
+		out.append({"kind": spec["kind"], "offset": ofs,
+			"center": Vector2(float(island["x"]), float(island["z"])) + ofs,
+			"half": Vector2(6, 5) if spec["kind"] == "hut" else Vector2(4, 4)})
+	return out
+
+func blocked_by_building(island: Dictionary, world_point: Vector3, radius: float = 0.68) -> bool:
+	var point := Vector2(world_point.x, world_point.z)
+	for building in buildings_for(island):
+		var center: Vector2 = building["center"]
+		var half: Vector2 = building["half"]
+		var nearest := Vector2(clampf(point.x, center.x - half.x, center.x + half.x),
+			clampf(point.y, center.y - half.y, center.y + half.y))
+		if point.distance_squared_to(nearest) <= radius * radius:
+			return true
+	return false
+
+func segment_hits_building(island: Dictionary, start: Vector3, finish: Vector3) -> bool:
+	var origin := Vector2(start.x, start.z)
+	var delta := Vector2(finish.x - start.x, finish.z - start.z)
+	for building in buildings_for(island):
+		var center: Vector2 = building["center"]
+		var half: Vector2 = building["half"]
+		var tmin := 0.0
+		var tmax := 1.0
+		var intersects := true
+		for axis in range(2):
+			var p := origin.x if axis == 0 else origin.y
+			var d := delta.x if axis == 0 else delta.y
+			var lo := center.x - half.x if axis == 0 else center.y - half.y
+			var hi := center.x + half.x if axis == 0 else center.y + half.y
+			if absf(d) < 0.000001:
+				if p < lo or p > hi:
+					intersects = false
+					break
+			else:
+				var t1 := (lo - p) / d
+				var t2 := (hi - p) / d
+				tmin = maxf(tmin, minf(t1, t2))
+				tmax = minf(tmax, maxf(t1, t2))
+				if tmin > tmax:
+					intersects = false
+					break
+		if intersects:
+			return true
+	return false

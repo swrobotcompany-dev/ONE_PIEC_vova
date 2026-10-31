@@ -41,6 +41,9 @@ func set_hero(kind: String) -> void:
 	avatar_model = packed.instantiate() as Node3D
 	add_child(avatar_model)
 	avatar_model.scale = Vector3.ONE
+	# KayKit rig artwork faces +Z; Godot's forward is -Z.
+	# Rotate ONLY the imported rig, never the motion/world-space controller.
+	avatar_model.rotation.y = PI
 	_find_animation(avatar_model)
 	if kind == "luffy":
 		_style_luffy()

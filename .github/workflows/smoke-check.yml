@@ -23,5 +23,7 @@ jobs:
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/gameplay_test.gd
       - name: Combat timing and directional hit validation
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/combat_test.gd
+      - name: Validate land/ocean, walls, firing and character facing
+        run: timeout -k 3s 45s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/world_integrity_test.gd
       - name: Boot multiplayer dedicated server
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --quit-after 5 -- --server

@@ -42,7 +42,7 @@ func _ready() -> void:
 	help.anchor_left = 0.02
 	help.anchor_top = 1.0
 	help.offset_top = -46
-	help.text = "WASD Move/Sail • SHIFT Run • TAB Switch • LMB/SPACE Attack • E Helm • F Swim/Board • G Loot"
+	help.text = "WASD Move • RMB Rotate camera • Mouse Aim • LMB Shoot • SPACE Melee • TAB Hero • E Helm • F Board"
 	help.add_theme_color_override("font_color", Color(0.95, 0.91, 0.77))
 	help.add_theme_font_size_override("font_size", 17)
 	help.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -146,7 +146,8 @@ func show_connected() -> void:
 	details.visible = true
 	help.visible = true
 	heroes.get_parent().visible = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# Free cursor for Diablo-like aiming. RMB drag orbits the camera.
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func show_disconnected(message: String) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
