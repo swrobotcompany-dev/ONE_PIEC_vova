@@ -75,7 +75,9 @@ func _refresh() -> void:
 	# project autoload globals. Resolve the session node dynamically instead:
 	# the same island streamer works in a full client and in the smoke test.
 	var looted: Array = []
-	var session: Node = get_tree().root.get_node_or_null("GameNet")
+	var session: Node = null
+	if is_inside_tree() and get_tree() != null:
+		session = get_tree().root.get_node_or_null("GameNet")
 	if session != null:
 		var session_state: Dictionary = session.get("state")
 		looted = session_state.get("looted", [])
