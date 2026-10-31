@@ -66,7 +66,7 @@ func _refresh() -> void:
 	for id in detailed:
 		var treasure: Node3D = detailed[id].get_node_or_null("Treasure")
 		if treasure != null:
-			treasure.visible = not id in looted
+			treasure.visible = not (id in looted)
 
 func _build_proxy(info: Dictionary) -> Node3D:
 	var root := Node3D.new()
