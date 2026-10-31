@@ -42,7 +42,61 @@ func _ready() -> void:
 	wheel.bottom_radius = 0.7
 	wheel.height = 0.22
 	var wheel_node := _mesh(wheel, Vector3(0, 4.1, 3.2), foam_material)
+	# More readable low-poly silhouette without importing textures.
+	# Material count stays small and the Compatibility renderer is retained.
+	var gilding := _material(Color(0.86, 0.62, 0.22))
+	var copper := _material(Color(0.35, 0.25, 0.22))
+	var dark_wood := _material(Color(0.17, 0.10, 0.09))
+	for side in [-1, 1]:
+		var sx: float = float(side)
+		# Contrasting upper gunwale and broad wooden waterline.
+		_box(Vector3(0.25, 0.27, 16.0), Vector3(sx * 3.97, 2.39, 0), gilding)
+		_box(Vector3(0.21, 0.35, 15.3), Vector3(sx * 4.0, 0.55, 0), dark_wood)
+		for z in [-5.7, -1.7, 2.3, 6.3]:
+			# Gun ports read as darker rectangles with projecting cannons.
+			_box(Vector3(0.15, 0.95, 1.1), Vector3(sx * 4.06, 1.45, z), dark_wood)
+			var gun := CylinderMesh.new()
+			gun.top_radius = 0.29
+			gun.bottom_radius = 0.38
+			gun.height = 1.35
+			gun.radial_segments = 7
+			var cannon := _mesh(gun, Vector3(sx * 4.48, 1.6, z), copper)
+			cannon.rotation_degrees.z = 90.0
+		# Lanterns frame the rear cabin without dynamic lights/shadows.
+		_lantern(Vector3(sx * 2.4, 4.95, 6.8), copper)
+		_box(Vector3(0.21, 2.4, 0.21), Vector3(sx * 3.5, 5.1, 4.8), dark_wood)
+	# Raised bow, bowsprit, stern windows and lookout crow's nest.
+	_box(Vector3(4.3, 0.45, 4.5), Vector3(0, 3.0, -7.9), dark_wood)
+	_box(Vector3(0.55, 0.48, 9.0), Vector3(0, 4.2, -10.8), gilding)
+	for x in [-2.15, 0.0, 2.15]:
+		_box(Vector3(1.4, 1.1, 0.14), Vector3(x, 3.45, 7.63), gilding)
+	var basket := CylinderMesh.new()
+	basket.top_radius = 1.75
+	basket.bottom_radius = 1.35
+	basket.height = 1.4
+	basket.radial_segments = 8
+	_mesh(basket, Vector3(0, 16.4, -1.5), dark_wood)
+	_box(Vector3(3.4, 0.24, 0.2), Vector3(0, 17.15, -1.5), gilding)
 	wheel_node.rotation_degrees.z = 90.0
+
+func _lantern(at: Vector3, metal: Material) -> void:
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(1.0, 0.70, 0.20)
+	glow.emission_enabled = true
+	glow.emission = Color(1.0, 0.50, 0.08)
+	glow.emission_energy_multiplier = 1.8
+	var lamp := SphereMesh.new()
+	lamp.radius = 0.37
+	lamp.height = 0.72
+	lamp.radial_segments = 8
+	lamp.rings = 4
+	_mesh(lamp, at, glow)
+	var cover := CylinderMesh.new()
+	cover.top_radius = 0.52
+	cover.bottom_radius = 0.52
+	cover.height = 0.12
+	cover.radial_segments = 8
+	_mesh(cover, at + Vector3(0, 0.46, 0), metal)
 
 func _box(size: Vector3, at: Vector3, material: Material) -> void:
 	var box := BoxMesh.new()
