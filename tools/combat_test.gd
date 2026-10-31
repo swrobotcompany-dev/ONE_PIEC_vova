@@ -57,6 +57,8 @@ func _initialize() -> void:
 	var second_player: Dictionary = game.players[1]
 	second_player["world"] = second["pos"] + Vector3(0, 0, 3.0)
 	second_player["next_attack"] = 0.0
+	# Melee now follows the character's facing, not its free orbit camera.
+	second_player["facing"] = PI
 	game.players[1] = second_player
 	game.inputs[1]["yaw"] = PI
 	game.world_clock += 1.0
