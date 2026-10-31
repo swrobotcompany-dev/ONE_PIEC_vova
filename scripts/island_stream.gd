@@ -319,6 +319,57 @@ func _box_at(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	instance.material_override = _mat(color)
 	parent.add_child(instance)
 
+func _terrain_point(info: Dictionary, radius: float, angle: float) -> Vector3:
+	var x := cos(angle) * radius
+	var z := sin(angle) * radius
+	var world_pos := Vector3(float(info["x"]) + x, 0, float(info["z"]) + z)
+	return Vector3(x, world.ground_height(info, world_pos), z)
+
+func _vertex(tool: SurfaceTool, point: Vector3, radius: float, base: Color) -> void:
+	var t := point.length() / maxf(radius, 1.0)
+	var color := Color(0.87, 0.74, 0.43).lerp(base, clampf((1.0 - t) * 5.0, 0.0, 1.0))
+	tool.set_color(color)
+	tool.add_vertex(point)
+
+func _add_palms(root: Node3D, info: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(info["id"]) * 1337 + 789
+	var trunk := CylinderMesh.new()
+	trunk.top_radius = 0.28
+	trunk.bottom_radius = 0.55
+	trunk.height = 7.5
+	trunk.radial_segments = 5
+	var crown := _make_palm_fronds()
+	var count := 18 if quality == 1 else 7
+	var stems := MultiMesh.new()
+	stems.transform_format = MultiMesh.TRANSFORM_3D
+	stems.mesh = trunk
+	stems.instance_count = count
+	var leaves := MultiMesh.new()
+	leaves.transform_format = MultiMesh.TRANSFORM_3D
+	leaves.mesh = crown
+	leaves.instance_count = count
+	for i in range(count):
+		var angle := rng.randf_range(0.0, TAU)
+		var distance := rng.randf_range(0.2, 0.72) * float(info["radius"])
+		var x := cos(angle) * distance
+		var z := sin(angle) * distance
+		var h := world.ground_height(info, Vector3(float(info["x"]) + x,
+			0, float(info["z"]) + z))
+		var scale := rng.randf_range(0.7, 1.25)
+		stems.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(scale,
+			scale, scale)), Vector3(x, h + 3.75 * scale, z)))
+		leaves.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(scale,
+			scale, scale)), Vector3(x, h + 8.3 * scale, z)))
+	var trunk_mesh := MultiMeshInstance3D.new()
+	trunk_mesh.multimesh = stems
+	trunk_mesh.material_override = _mat(Color(0.42, 0.23, 0.1))
+	root.add_child(trunk_mesh)
+	var leaves_mesh := MultiMeshInstance3D.new()
+	leaves_mesh.multimesh = leaves
+	leaves_mesh.material_override = _mat(Color(0.16, 0.49, 0.25))
+	root.add_child(leaves_mesh)
+
 func _make_palm_fronds() -> ArrayMesh:
 	# Curved six-leaf canopy, roughly 70 triangles. One MultiMesh draw call
 	# for all canopies, unlike individual spherical "lollipop" trees.
