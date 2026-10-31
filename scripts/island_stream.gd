@@ -62,7 +62,14 @@ func _refresh() -> void:
 			continue
 		if not distant.has(id):
 			distant[id] = _build_proxy(need_distant[id])
-	var looted: Array = GameNet.state.get("looted", [])
+	# A standalone `godot --script res://tools/smoke.gd` does not initialize
+	# project autoload globals. Resolve the session node dynamically instead:
+	# the same island streamer works in a full client and in the smoke test.
+	var looted: Array = []
+	var session := get_node_or_null("/root/GameNet")
+	if session != null:
+		var session_state: Dictionary = session.get("state")
+		looted = session_state.get("looted", [])
 	for id in detailed:
 		var treasure: Node3D = detailed[id].get_node_or_null("Treasure")
 		if treasure != null:
