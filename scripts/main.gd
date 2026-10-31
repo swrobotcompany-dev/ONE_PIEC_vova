@@ -139,7 +139,7 @@ func _on_disconnected(message: String) -> void:
 
 func _quality(low: bool) -> void:
 	low_graphics = low
-	islands.quality = 0 if low else 1
+	islands.set_quality(0 if low else 1)
 	camera.far = 2800.0 if low else 4600.0
 
 func _physics_process(delta: float) -> void:
@@ -175,9 +175,9 @@ func _process(delta: float) -> void:
 	var local_id := str(multiplayer.get_unique_id())
 	var pirates: Dictionary = current.get("players", {})
 	_sync_avatars(pirates, delta)
-	_sync_guards(current.get("guards", {}), focus, delta)
 	if avatars.has(local_id):
 		focus = avatars[local_id].global_position + Vector3(0, 2.5, 0)
+	_sync_guards(current.get("guards", {}), focus, delta)
 	islands.set_focus(focus)
 	ocean.position.x = focus.x
 	ocean.position.z = focus.z

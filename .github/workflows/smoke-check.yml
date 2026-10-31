@@ -19,5 +19,7 @@ jobs:
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --editor --path /game --import
       - name: Run procedural island and HUD smoke test
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/smoke.gd
+      - name: Check coastline collision, swimming, pirate spawns
+        run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/gameplay_test.gd
       - name: Boot multiplayer dedicated server
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --quit-after 5 -- --server

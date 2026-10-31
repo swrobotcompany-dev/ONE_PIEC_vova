@@ -23,6 +23,15 @@ func _process(delta: float) -> void:
 func set_focus(new_focus: Vector3) -> void:
 	focus = new_focus
 
+func set_quality(new_quality: int) -> void:
+	if quality == new_quality:
+		return
+	quality = new_quality
+	for id in detailed:
+		detailed[id].queue_free()
+	detailed.clear()
+	clock = UPDATE_EVERY
+
 func _refresh() -> void:
 	var nearby: Array[Dictionary] = []
 	for island in world.islands:
