@@ -15,6 +15,8 @@ RUN apt-get update \
 FROM engine AS server
 WORKDIR /game
 COPY . /game
+# Generate the class cache once; the runtime server does not open the editor.
+RUN godot --headless --editor --path /game --import
 EXPOSE 7777/udp
 CMD ["godot", "--headless", "--path", "/game", "--", "--server"]
 
