@@ -7,6 +7,7 @@ var ocean: OceanSurface
 var islands: IslandStream
 var camera: Camera3D
 var aiming: AimingView
+var sun_light: DirectionalLight3D
 var hud: PirateHud
 var avatars: Dictionary = {}
 var guardians: Dictionary = {}
@@ -41,6 +42,7 @@ func _ready() -> void:
 	add_child(islands)
 	camera = Camera3D.new()
 	camera.current = true
+	camera.near = 0.25
 	camera.far = 4600.0
 	add_child(camera)
 	aiming = AimingView.new()
@@ -81,7 +83,9 @@ func _setup_environment() -> void:
 	sun.rotation_degrees = Vector3(-43, -27, 0)
 	sun.light_color = Color(1.0, 0.89, 0.69)
 	sun.light_energy = 1.2
-	sun.shadow_enabled = false # Strong performance benefit on integrated GPUs.
+	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 115.0
+	sun_light = sun
 	add_child(sun)
 
 func _setup_ocean() -> void:
@@ -112,6 +116,8 @@ func _on_disconnected(message: String) -> void:
 func _quality(low: bool) -> void:
 	low_graphics = low
 	islands.set_quality(0 if low else 1)
+	if sun_light != null:
+		sun_light.shadow_enabled = not low
 	camera.far = 2800.0 if low else 4600.0
 
 func _physics_process(delta: float) -> void:
@@ -127,6 +133,12 @@ func _physics_process(delta: float) -> void:
 		float(Input.is_key_pressed(KEY_A)),
 		"yaw": cam_yaw, "sprint": Input.is_key_pressed(KEY_SHIFT)}
 	GameNet.submit_local_input(command)
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and aiming != null:
+		var local_id := str(multiplayer.get_unique_id())
+		if avatars.has(local_id):
+			var pirate: Dictionary = GameNet.state.get("players", {}).get(local_id, {})
+			aiming.shoot(avatars[local_id].global_position, cam_yaw,
+				str(pirate.get("hero", "luffy")))
 
 func _process(delta: float) -> void:
 	if ship == null:
