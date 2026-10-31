@@ -117,4 +117,6 @@ func _set_shader_masks(center: Vector2) -> void:
 				float(island["radius"]), float(island["height"])))
 		else:
 			masks.append(Vector4.ZERO)
-	(material_override as ShaderMaterial).set_shader_parameter("land_masks", masks)
+	var water_material := material_override as ShaderMaterial
+	if water_material != null:
+		water_material.set_shader_parameter("land_masks", masks)
