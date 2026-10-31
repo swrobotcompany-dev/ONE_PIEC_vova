@@ -61,12 +61,13 @@ func _initialize() -> void:
 
 	# This creates the ocean / wake shader without starting the game server.
 	var main_script = load("res://scripts/main.gd")
-	var view: Node3D = main_script.new()
+	var view: Variant = main_script.new()
 	view._setup_ocean()
 	if view.ocean == null or view.wake == null:
 		_fail("Ocean shader or ship wake not constructed")
 		return
-	if view.ocean.mesh.subdivide_width < 100:
+	var sea_mesh: PlaneMesh = view.ocean.mesh
+	if sea_mesh.subdivide_width < 100:
 		_fail("Ocean mesh still uses coarse original geometry")
 		return
 
@@ -74,7 +75,7 @@ func _initialize() -> void:
 	root.add_child(ui)
 	ui.update_details(0.0, "Dawn Island", 2, 10000.0,
 		false, 0, false, "SWIMMING")
-	if not "SWIMMING" in ui.details.text:
+	if not ui.details.text.contains("SWIMMING"):
 		_fail("Swimming status not displayed")
 		return
 
