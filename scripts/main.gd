@@ -183,8 +183,10 @@ func _process(delta: float) -> void:
 		var nearest := world.closest_island(focus)
 		var distance := ship_position.distance_to(Vector3(
 			float(world.islands[1]["x"]), 0, float(world.islands[1]["z"])))
+		var local_player: Dictionary = pirates.get(local_id, {})
 		hud.update_details(speed, str(nearest["name"]), pirates.size(),
-			distance, int(current.get("helmsman", 0)) == multiplayer.get_unique_id())
+			distance, int(current.get("helmsman", 0)) == multiplayer.get_unique_id(),
+			int(local_player.get("gold", 0)), bool(local_player.get("one_piece", false)))
 
 func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 	for id in avatars.keys():
@@ -261,3 +263,5 @@ func _unhandled_input(event: InputEvent) -> void:
 			GameNet.toggle_helm()
 		elif event.keycode == KEY_F:
 			GameNet.toggle_shore()
+		elif event.keycode == KEY_G:
+			GameNet.collect_treasure()

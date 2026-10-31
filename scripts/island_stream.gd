@@ -62,6 +62,11 @@ func _refresh() -> void:
 			continue
 		if not distant.has(id):
 			distant[id] = _build_proxy(need_distant[id])
+	var looted: Array = GameNet.state.get("looted", [])
+	for id in detailed:
+		var treasure: Node3D = detailed[id].get_node_or_null("Treasure")
+		if treasure != null:
+			treasure.visible = not id in looted
 
 func _build_proxy(info: Dictionary) -> Node3D:
 	var root := Node3D.new()
@@ -115,6 +120,7 @@ func _build_island(info: Dictionary) -> Node3D:
 	root.add_child(land)
 	if info["biome"] != "snow" and info["biome"] != "desert":
 		_add_palms(root, info)
+	_add_treasure(root, info)
 	var label := Label3D.new()
 	label.text = str(info["name"])
 	label.font_size = 42
@@ -124,6 +130,26 @@ func _build_island(info: Dictionary) -> Node3D:
 	label.modulate = Color(1.0, 0.9, 0.65, 0.9)
 	root.add_child(label)
 	return root
+
+func _add_treasure(root: Node3D, info: Dictionary) -> void:
+	var prize := Node3D.new()
+	prize.name = "Treasure"
+	var center := Vector3(float(info["x"]), 0, float(info["z"]))
+	prize.position.y = world.ground_height(info, center) + 1.3
+	root.add_child(prize)
+	var body := BoxMesh.new()
+	body.size = Vector3(6, 2.6, 4)
+	var box := MeshInstance3D.new()
+	box.mesh = body
+	box.material_override = _mat(Color(0.26, 0.12, 0.07))
+	prize.add_child(box)
+	var lid := BoxMesh.new()
+	lid.size = Vector3(6.3, 0.65, 4.3)
+	var lid_mesh := MeshInstance3D.new()
+	lid_mesh.mesh = lid
+	lid_mesh.position.y = 1.7
+	lid_mesh.material_override = _mat(Color(0.96, 0.73, 0.19) if int(info["id"]) == 1 else Color(0.75, 0.52, 0.15))
+	prize.add_child(lid_mesh)
 
 func _terrain_point(info: Dictionary, radius: float, angle: float) -> Vector3:
 	var x := cos(angle) * radius

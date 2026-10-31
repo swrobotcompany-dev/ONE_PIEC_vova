@@ -41,7 +41,7 @@ func _ready() -> void:
 	help.anchor_left = 0.02
 	help.anchor_top = 1.0
 	help.offset_top = -46
-	help.text = "WASD • walk / sail   |   E • helm   |   F • shore / board   |   Mouse • camera   |   Esc • cursor"
+	help.text = "WASD • walk / sail   |   E • helm   |   F • shore / board   |   G • treasure   |   Mouse • camera   |   Esc • cursor"
 	help.add_theme_color_override("font_color", Color(0.95, 0.91, 0.77))
 	help.add_theme_font_size_override("font_size", 17)
 	help.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -139,7 +139,8 @@ func show_disconnected(message: String) -> void:
 	show_error(message)
 
 func update_details(speed: float, location: String, players: int,
-		distance: float, is_helm: bool) -> void:
+		distance: float, is_helm: bool, gold: int, found: bool) -> void:
 	var role := "STEERING" if is_helm else "CREW"
-	details.text = "  %s  |  Speed %.0f m/s  |  %d pirates  |  One Piece: %.1f km  |  %s" % [
-		location, absf(speed), players, distance / 1000.0, role]
+	var treasure := "FOUND!" if found else "%.1f km" % (distance / 1000.0)
+	details.text = "  %s  |  %.0f m/s  |  %d pirates  |  Gold %d  |  One Piece %s  |  %s" % [
+		location, absf(speed), players, gold, treasure, role]

@@ -16,6 +16,7 @@ var ship_heading := 0.0
 var ship_speed := 0.0
 var helmsman_id := 0
 var players: Dictionary = {}
+var claimed_treasures: Dictionary = {}
 var inputs: Dictionary = {}
 var state: Dictionary = {}
 var is_active := false
@@ -77,7 +78,8 @@ func _reset() -> void:
 func _spawn_player(id: int) -> void:
 	var side := float(players.size() % 3) * 1.6 - 1.6
 	players[id] = {"id": id, "name": "Pirate %d" % id, "aboard": true,
-		"local": Vector3(side, 3.1, 3.2), "world": Vector3.ZERO}
+		"local": Vector3(side, 3.1, 3.2), "world": Vector3.ZERO,
+		"gold": 0, "one_piece": false}
 	inputs[id] = {"forward": 0.0, "strafe": 0.0}
 
 func _peer_connected(id: int) -> void:
@@ -175,6 +177,43 @@ func _server_toggle_shore(id: int) -> void:
 	players[id] = pirate
 	state = _make_snapshot()
 
+func collect_treasure() -> void:
+	if not is_active:
+		return
+	if multiplayer.is_server():
+		_server_collect(1)
+	else:
+		_ask_collect.rpc_id(1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _ask_collect() -> void:
+	if multiplayer.is_server():
+		_server_collect(multiplayer.get_remote_sender_id())
+
+func _server_collect(id: int) -> void:
+	if not players.has(id):
+		return
+	var pirate: Dictionary = players[id]
+	if bool(pirate["aboard"]):
+		return
+	var pos: Vector3 = pirate["world"]
+	var island := world.closest_island(pos)
+	var island_id: int = island["id"]
+	if claimed_treasures.has(island_id):
+		return
+	var center := Vector2(float(island["x"]), float(island["z"]))
+	if Vector2(pos.x, pos.z).distance_to(center) > maxf(25.0, float(island["radius"]) * 0.22):
+		return
+	claimed_treasures[island_id] = id
+	pirate["gold"] = int(pirate.get("gold", 0)) + (1000 if island_id == 1 else 40)
+	if island_id == 1:
+		pirate["one_piece"] = true
+	players[id] = pirate
+	state = _make_snapshot()
+	_receive_snapshot.rpc(state)
+	state_updated.emit()
+	_save_world()
+
 func _physics_process(delta: float) -> void:
 	if not is_active or not multiplayer.is_server():
 		return
@@ -229,9 +268,11 @@ func _make_snapshot() -> Dictionary:
 	for id in players:
 		var pirate: Dictionary = players[id]
 		all_players[str(id)] = {"name": pirate["name"], "aboard": pirate["aboard"],
-			"local": pirate["local"], "world": pirate["world"]}
+			"local": pirate["local"], "world": pirate["world"],
+			"gold": pirate.get("gold", 0), "one_piece": pirate.get("one_piece", false)}
 	return {"ship_position": ship_position, "ship_heading": ship_heading,
-		"ship_speed": ship_speed, "helmsman": helmsman_id, "players": all_players}
+		"ship_speed": ship_speed, "helmsman": helmsman_id, "players": all_players,
+		"looted": claimed_treasures.keys()}
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _receive_snapshot(data: Dictionary) -> void:
@@ -245,7 +286,7 @@ func _save_world() -> void:
 	if file == null:
 		return
 	file.store_string(JSON.stringify({"ship_x": ship_position.x, "ship_z": ship_position.z,
-		"heading": ship_heading}))
+		"heading": ship_heading, "claimed": claimed_treasures.keys()}))
 	file.close()
 
 func _load_world() -> void:
@@ -260,3 +301,6 @@ func _load_world() -> void:
 			SeaWorld.WORLD_RADIUS), 0, clampf(float(data.get("ship_z", 0.0)),
 			-SeaWorld.WORLD_RADIUS, SeaWorld.WORLD_RADIUS))
 		ship_heading = float(data.get("heading", 0.0))
+		claimed_treasures.clear()
+		for treasure_id in data.get("claimed", []):
+			claimed_treasures[int(treasure_id)] = 1
