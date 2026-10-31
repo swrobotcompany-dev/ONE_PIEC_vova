@@ -263,6 +263,7 @@ func _physics_process(delta: float) -> void:
 		var z: float = -float(controls.get("forward", 0.0))
 		var look_yaw: float = float(controls.get("yaw", 0.0))
 		var local_dir := Vector3(x, 0.0, z).limit_length(1.0)
+		pirate["moving"] = local_dir.length_squared() > 0.001
 		pirate["yaw"] = look_yaw
 
 		if bool(pirate["aboard"]):
@@ -322,7 +323,8 @@ func _make_snapshot() -> Dictionary:
 	for id in players:
 		var pirate: Dictionary = players[id]
 		all_players[str(id)] = {"name": pirate["name"], "aboard": pirate["aboard"],
-			"swimming": pirate.get("swimming", false), "yaw": pirate.get("yaw", 0.0),
+			"swimming": pirate.get("swimming", false), "moving": pirate.get("moving", false),
+			"yaw": pirate.get("yaw", 0.0),
 			"local": pirate["local"], "world": pirate["world"],
 			"gold": pirate.get("gold", 0), "one_piece": pirate.get("one_piece", false)}
 	return {"ship_position": ship_position, "ship_heading": ship_heading,
