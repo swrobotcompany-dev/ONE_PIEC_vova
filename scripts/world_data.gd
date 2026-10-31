@@ -5,6 +5,10 @@ extends RefCounted
 const WORLD_RADIUS := 15000.0
 const WORLD_SEED := 4272026
 const ISLAND_COUNT := 56
+const SEA_LEVEL := 0.0
+# Radius of the vessel's collision footprint: half-length + safe clearance.
+const SHIP_CLEARANCE := 15.0
+const SHIP_SWEEP_STEP := 3.0
 
 var islands: Array[Dictionary] = []
 
@@ -54,6 +58,78 @@ func closest_island(world_position: Vector3) -> Dictionary:
 			distance = d
 			best = island
 	return best
+
+# Server-side ship clearance from all islands. Keeps the whole hull
+# outside the visible shore, even when the vessel is turning or moving fast.
+func ship_position_is_clear(position: Vector3) -> bool:
+	if absf(position.x) > WORLD_RADIUS - 20.0 or absf(position.z) > WORLD_RADIUS - 20.0:
+		return false
+	for island in islands:
+		var dx: float = position.x - float(island["x"])
+		var dz: float = position.z - float(island["z"])
+		var minimum: float = float(island["radius"]) + SHIP_CLEARANCE
+		if dx * dx + dz * dz < minimum * minimum:
+			return false
+	return true
+
+# Old server saves may contain a ship inside an island. Relocate on load
+# without losing the rest of the save (heading and looted treasure).
+func ensure_ship_clear(position: Vector3) -> Vector3:
+	var corrected := Vector3(
+		clampf(position.x, -WORLD_RADIUS + 20.0, WORLD_RADIUS - 20.0),
+		0.0,
+		clampf(position.z, -WORLD_RADIUS + 20.0, WORLD_RADIUS - 20.0)
+	)
+	for attempt in range(4):
+		var changed := false
+		for island in islands:
+			var offset := Vector2(corrected.x - float(island["x"]),
+				corrected.z - float(island["z"]))
+			var minimum: float = float(island["radius"]) + SHIP_CLEARANCE + 0.5
+			if offset.length_squared() < minimum * minimum:
+				var direction := offset.normalized() if offset.length() > 0.01 					else Vector2(1.0, 0.0)
+				corrected.x = float(island["x"]) + direction.x * minimum
+				corrected.z = float(island["z"]) + direction.y * minimum
+				changed = true
+		corrected.x = clampf(corrected.x, -WORLD_RADIUS + 20.0, WORLD_RADIUS - 20.0)
+		corrected.z = clampf(corrected.z, -WORLD_RADIUS + 20.0, WORLD_RADIUS - 20.0)
+		if not changed:
+			break
+	return corrected
+
+# Swept movement in <=3m steps prevents high-speed tunnelling into land.
+# If the bow hits shore, slide along coast on the free axis rather than
+# teleporting through the island. Caller can throttle on a blocked hit.
+func move_ship_safely(position: Vector3, motion: Vector3) -> Dictionary:
+	var current := ensure_ship_clear(position)
+	var blocked := false
+	var steps := maxi(1, ceili(motion.length() / SHIP_SWEEP_STEP))
+	var step := Vector3(motion.x / float(steps), 0.0, motion.z / float(steps))
+	for i in range(steps):
+		var target := current + step
+		if ship_position_is_clear(target):
+			current = target
+			continue
+		blocked = true
+		var along_x := current + Vector3(step.x, 0.0, 0.0)
+		var along_z := current + Vector3(0.0, 0.0, step.z)
+		# Keep the axis that actually remains navigable.
+		if absf(step.x) >= absf(step.z):
+			if ship_position_is_clear(along_x):
+				current = along_x
+			elif ship_position_is_clear(along_z):
+				current = along_z
+		else:
+			if ship_position_is_clear(along_z):
+				current = along_z
+			elif ship_position_is_clear(along_x):
+				current = along_x
+	return {"position": current, "blocked": blocked}
+
+# True over dry terrain, false on the sea shelf outside or under sea level.
+func is_land_at(position: Vector3) -> bool:
+	var island := closest_island(position)
+	return ground_height(island, position) >= SEA_LEVEL + 0.65
 
 func ground_height(island: Dictionary, point: Vector3) -> float:
 	var dx: float = point.x - float(island["x"])
