@@ -55,6 +55,66 @@ func _ready() -> void:
 	wheel.height = 0.22
 	var wheel_node := _mesh(wheel, Vector3(0, 4.1, 3.2), foam_material)
 	wheel_node.rotation_degrees.z = 90.0
+	_add_ship_details()
+
+func _add_ship_details() -> void:
+	# Details reuse simple materials and meshes; no downloadable 4K textures.
+	var dark_wood := _material(Color(0.21, 0.105, 0.063))
+	var brass := _material(Color(0.85, 0.64, 0.25))
+	var iron := _material(Color(0.14, 0.18, 0.20))
+	var glass := _material(Color(0.21, 0.50, 0.56))
+	# Deck planks, subtle gaps and a clear walkway to the helm.
+	for i in range(10):
+		var z := -6.6 + float(i) * 1.38
+		_box(Vector3(6.95, 0.04, 0.045), Vector3(0, 2.66, z), dark_wood)
+	for side in [-1.0, 1.0]:
+		# Three dark cannon barrels and port frames on each broadside.
+		for z in [-4.8, -0.8, 3.1]:
+			_box(Vector3(0.27, 1.25, 1.8),
+				Vector3(side * 3.92, 2.23, z), dark_wood)
+			var barrel := CylinderMesh.new()
+			barrel.height = 2.25
+			barrel.top_radius = 0.31
+			barrel.bottom_radius = 0.36
+			barrel.radial_segments = 9
+			var gun := _mesh(barrel, Vector3(side * 4.24, 2.50, z), iron)
+			gun.rotation_degrees.z = 90.0
+			_box(Vector3(0.8, 0.22, 1.0),
+				Vector3(side * 3.52, 2.60, z), brass)
+		for z in [5.5, 6.45, 7.3]:
+			_box(Vector3(0.2, 0.6, 0.45),
+				Vector3(side * 3.04, 3.22, z), glass)
+	# Stern cabin windows and brass inlays.
+	for x in [-2.1, 0.0, 2.1]:
+		_box(Vector3(1.23, 1.15, 0.12),
+			Vector3(x, 3.26, 7.76), glass)
+		_box(Vector3(1.33, 0.10, 0.16),
+			Vector3(x, 3.88, 7.81), brass)
+	# Crossbeams, taut rigging and bowsprit create a more ship-like silhouette.
+	_rope(Vector3(0, 2.9, -10.0), Vector3(0, 3.6, -16.0), 0.23, dark_wood)
+	for side in [-1.0, 1.0]:
+		_rope(Vector3(3.45 * side, 3.0, -5.5), Vector3(0, 16.0, -1.5), 0.07, dark_wood)
+		_rope(Vector3(3.45 * side, 3.0, 4.9), Vector3(0, 16.0, -1.5), 0.07, dark_wood)
+		_rope(Vector3(3.30 * side, 3.0, -7.5), Vector3(0, 11.0, -5.9), 0.07, dark_wood)
+		_rope(Vector3(0, 15.5, -1.5), Vector3(side * 4.8, 13.5, -1.5), 0.07, dark_wood)
+	# A small black flag with gold top ornament (no image asset).
+	_box(Vector3(2.1, 1.1, 0.06), Vector3(1.06, 15.95, -1.6),
+		_material(Color(0.13, 0.13, 0.19)))
+	var ornament := SphereMesh.new()
+	ornament.radius = 0.35
+	ornament.height = 0.7
+	_mesh(ornament, Vector3(0, 17.1, -1.5), brass)
+
+func _rope(start: Vector3, finish: Vector3, radius: float,
+		material: Material) -> void:
+	var diff := finish - start
+	var mesh := CylinderMesh.new()
+	mesh.height = diff.length()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.radial_segments = 6
+	var rope := _mesh(mesh, (start + finish) * 0.5, material)
+	rope.quaternion = Quaternion(Vector3.UP, diff.normalized())
 
 func _build_tapered_hull() -> void:
 	# Contoured bow/stern instead of a rectangular block. 6 cross sections.

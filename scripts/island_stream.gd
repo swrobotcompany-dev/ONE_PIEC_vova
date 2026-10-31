@@ -114,8 +114,8 @@ func _build_island(info: Dictionary) -> Node3D:
 	var radius: float = float(info["radius"])
 	var mesh_builder := SurfaceTool.new()
 	mesh_builder.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rings := 12
-	var segments := 40
+	var rings := 24 if quality == 1 else 14
+	var segments := 64 if quality == 1 else 36
 	var palette := _land_color(info)
 	for ring in range(rings):
 		var inner := radius * float(ring) / float(rings)
@@ -243,84 +243,107 @@ func _add_details(root: Node3D, info: Dictionary) -> void:
 		mesh.material_override = _mat(Color(0.46, 0.48, 0.47))
 		root.add_child(mesh)
 	if int(info["id"]) == 0:
-		_add_hut(root, info, Vector2(-28, -18))
-		_add_hut(root, info, Vector2(35, 15))
+		_add_hut(root, info, Vector2(-48, -34))
+		_add_hut(root, info, Vector2(44, 20))
+		_add_watchtower(root, info, Vector2(-18, 52))
+	elif int(info["id"]) == 1:
+		_add_watchtower(root, info, Vector2(-33, 56))
+		_add_hut(root, info, Vector2(42, -25))
+	elif int(info["id"]) % 4 == 0:
+		_add_hut(root, info, Vector2(-20, 29))
+		_add_watchtower(root, info, Vector2(30, 19))
 
 func _add_hut(root: Node3D, info: Dictionary, offset: Vector2) -> void:
 	var hut := Node3D.new()
-	var pos := Vector3(float(info["x"]) + offset.x, 0,
-		float(info["z"]) + offset.y)
-	hut.position = Vector3(offset.x, world.ground_height(info, pos), offset.y)
+	var point := Vector3(float(info["x"]) + offset.x, 0, float(info["z"]) + offset.y)
+	hut.position = Vector3(offset.x, world.ground_height(info, point), offset.y)
 	root.add_child(hut)
-	var walls := BoxMesh.new()
-	walls.size = Vector3(12, 7, 10)
-	var wall_mesh := MeshInstance3D.new()
-	wall_mesh.mesh = walls
-	wall_mesh.position.y = 3.5
-	wall_mesh.material_override = _mat(Color(0.73, 0.57, 0.34))
-	hut.add_child(wall_mesh)
+	# Walls, porch, door, windows and roof: small primitive meshes, no textures.
+	_box_at(hut, Vector3(0, 3.6, 0), Vector3(12, 7.2, 10), Color(0.74, 0.57, 0.36))
+	_box_at(hut, Vector3(0, 0.28, -7.3), Vector3(15, 0.5, 5.5), Color(0.42, 0.27, 0.16))
+	_box_at(hut, Vector3(0, 2.6, -5.08), Vector3(2.7, 5.0, 0.24), Color(0.30, 0.18, 0.09))
+	for side in [-1.0, 1.0]:
+		_box_at(hut, Vector3(3.2 * side, 4.1, -5.10), Vector3(2.0, 2.2, 0.28), Color(0.17, 0.38, 0.42))
+		_box_at(hut, Vector3(3.2 * side, 4.1, -5.27), Vector3(0.14, 2.4, 0.26), Color(0.94, 0.77, 0.48))
+		_box_at(hut, Vector3(3.2 * side, 4.1, -5.29), Vector3(2.1, 0.14, 0.26), Color(0.94, 0.77, 0.48))
+		_box_at(hut, Vector3(6.2 * side, 4.5, 0), Vector3(0.26, 2.6, 3.6), Color(0.24, 0.39, 0.41))
+		for z in [-4.0, 4.0]:
+			_box_at(hut, Vector3(5.4 * side, 4.2, z), Vector3(0.7, 0.7, 0.7), Color(0.42, 0.29, 0.16))
 	var roof := PrismMesh.new()
-	roof.size = Vector3(15, 4.7, 12.5)
+	roof.size = Vector3(15.5, 5.6, 13)
 	var roof_mesh := MeshInstance3D.new()
 	roof_mesh.mesh = roof
-	roof_mesh.position.y = 8.9
-	roof_mesh.material_override = _mat(Color(0.52, 0.23, 0.12))
+	roof_mesh.position.y = 9.5
+	roof_mesh.material_override = _mat(Color(0.53, 0.23, 0.12))
 	hut.add_child(roof_mesh)
+	for x in [-6.1, 6.1]:
+		_box_at(hut, Vector3(x, 3.4, -8.6), Vector3(0.50, 6.8, 0.5), Color(0.37, 0.21, 0.10))
+	var chimney := CylinderMesh.new()
+	chimney.height = 3.2
+	chimney.top_radius = 0.72
+	chimney.bottom_radius = 0.82
+	chimney.radial_segments = 6
+	var pipe := MeshInstance3D.new()
+	pipe.mesh = chimney
+	pipe.position = Vector3(3.5, 11.7, 2.4)
+	pipe.material_override = _mat(Color(0.41, 0.41, 0.38))
+	hut.add_child(pipe)
 
-func _terrain_point(info: Dictionary, radius: float, angle: float) -> Vector3:
-	var x := cos(angle) * radius
-	var z := sin(angle) * radius
-	var world_pos := Vector3(float(info["x"]) + x, 0, float(info["z"]) + z)
-	return Vector3(x, world.ground_height(info, world_pos), z)
+func _add_watchtower(root: Node3D, info: Dictionary, offset: Vector2) -> void:
+	var point := Vector3(float(info["x"]) + offset.x, 0, float(info["z"]) + offset.y)
+	var height := world.ground_height(info, point)
+	var tower := Node3D.new()
+	tower.position = Vector3(offset.x, height, offset.y)
+	root.add_child(tower)
+	_box_at(tower, Vector3(0, 10.0, 0), Vector3(8, 0.85, 8), Color(0.55, 0.34, 0.17))
+	for x in [-3.1, 3.1]:
+		for z in [-3.1, 3.1]:
+			_box_at(tower, Vector3(x, 5.1, z), Vector3(0.72, 10.2, 0.72), Color(0.35, 0.22, 0.12))
+			_box_at(tower, Vector3(x, 11.4, z), Vector3(0.62, 2.2, 0.62), Color(0.35, 0.22, 0.12))
+	_box_at(tower, Vector3(0, 12.1, 0), Vector3(9.0, 0.45, 9.0), Color(0.53, 0.25, 0.15))
+	var banner := PlaneMesh.new()
+	banner.size = Vector2(3, 4.7)
+	var flag := MeshInstance3D.new()
+	flag.mesh = banner
+	flag.position = Vector3(3.2, 15.2, 0)
+	flag.rotation_degrees.x = 90
+	flag.material_override = _mat(Color(0.84, 0.24, 0.16))
+	tower.add_child(flag)
 
-func _vertex(tool: SurfaceTool, point: Vector3, radius: float, base: Color) -> void:
-	var t := point.length() / maxf(radius, 1.0)
-	var color := Color(0.87, 0.74, 0.43).lerp(base, clampf((1.0 - t) * 5.0, 0.0, 1.0))
-	tool.set_color(color)
-	tool.add_vertex(point)
+func _box_at(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
+	var box := BoxMesh.new()
+	box.size = size
+	var instance := MeshInstance3D.new()
+	instance.mesh = box
+	instance.position = pos
+	instance.material_override = _mat(color)
+	parent.add_child(instance)
 
-func _add_palms(root: Node3D, info: Dictionary) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = int(info["id"]) * 1337 + 789
-	var trunk := CylinderMesh.new()
-	trunk.top_radius = 0.28
-	trunk.bottom_radius = 0.55
-	trunk.height = 7.5
-	trunk.radial_segments = 5
-	var crown := SphereMesh.new()
-	crown.radius = 4.0
-	crown.height = 5.5
-	crown.radial_segments = 7
-	crown.rings = 3
-	var count := 18 if quality == 1 else 7
-	var stems := MultiMesh.new()
-	stems.transform_format = MultiMesh.TRANSFORM_3D
-	stems.mesh = trunk
-	stems.instance_count = count
-	var leaves := MultiMesh.new()
-	leaves.transform_format = MultiMesh.TRANSFORM_3D
-	leaves.mesh = crown
-	leaves.instance_count = count
-	for i in range(count):
-		var angle := rng.randf_range(0.0, TAU)
-		var distance := rng.randf_range(0.2, 0.72) * float(info["radius"])
-		var x := cos(angle) * distance
-		var z := sin(angle) * distance
-		var h := world.ground_height(info, Vector3(float(info["x"]) + x,
-			0, float(info["z"]) + z))
-		var scale := rng.randf_range(0.7, 1.25)
-		stems.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(scale,
-			scale, scale)), Vector3(x, h + 3.75 * scale, z)))
-		leaves.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(scale,
-			scale, scale)), Vector3(x, h + 8.3 * scale, z)))
-	var trunk_mesh := MultiMeshInstance3D.new()
-	trunk_mesh.multimesh = stems
-	trunk_mesh.material_override = _mat(Color(0.42, 0.23, 0.1))
-	root.add_child(trunk_mesh)
-	var leaves_mesh := MultiMeshInstance3D.new()
-	leaves_mesh.multimesh = leaves
-	leaves_mesh.material_override = _mat(Color(0.16, 0.49, 0.25))
-	root.add_child(leaves_mesh)
+func _make_palm_fronds() -> ArrayMesh:
+	# Curved six-leaf canopy, roughly 70 triangles. One MultiMesh draw call
+	# for all canopies, unlike individual spherical "lollipop" trees.
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for leaf in range(7):
+		var angle := TAU * float(leaf) / 7.0
+		var direction := Vector3(cos(angle), 0, sin(angle))
+		var across := Vector3(-sin(angle), 0, cos(angle))
+		for segment in range(3):
+			var t0 := float(segment) / 3.0
+			var t1 := float(segment + 1) / 3.0
+			var center0 := direction * (t0 * 5.8) + Vector3.UP * (0.8 - t0 * t0 * 3.2)
+			var center1 := direction * (t1 * 5.8) + Vector3.UP * (0.8 - t1 * t1 * 3.2)
+			var w0 := sin((0.1 + t0) * PI) * 1.45
+			var w1 := sin((0.1 + t1) * PI) * 1.45
+			_tri(tool, center0 - across * w0, center0 + across * w0, center1 - across * w1)
+			_tri(tool, center0 + across * w0, center1 + across * w1, center1 - across * w1)
+	tool.generate_normals()
+	return tool.commit()
+
+func _tri(tool: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
+	tool.add_vertex(a)
+	tool.add_vertex(b)
+	tool.add_vertex(c)
 
 func _land_color(info: Dictionary) -> Color:
 	match str(info["biome"]):
@@ -335,4 +358,5 @@ func _mat(color: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.roughness = 1.0
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m

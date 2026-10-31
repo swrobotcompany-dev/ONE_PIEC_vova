@@ -42,7 +42,7 @@ func _ready() -> void:
 	help.anchor_left = 0.02
 	help.anchor_top = 1.0
 	help.offset_top = -46
-	help.text = "WASD Move/Sail    •    TAB Luffy ↔ Zoro    •    SPACE Attack    •    E Helm    •    F Swim/Board    •    G Fruit    •    Esc Mouse"
+	help.text = "WASD Move/Sail • SHIFT Run • TAB Switch • LMB/SPACE Attack • E Helm • F Swim/Board • G Loot"
 	help.add_theme_color_override("font_color", Color(0.95, 0.91, 0.77))
 	help.add_theme_font_size_override("font_size", 17)
 	help.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -158,11 +158,11 @@ func show_disconnected(message: String) -> void:
 
 func update_details(speed: float, location: String, players: int,
 		distance: float, is_helm: bool, gold: int, found: bool,
-		hero: String, mode: String, hp: int, fruits: int) -> void:
+		hero: String, mode: String, hp: int, fruits: int, hits: int) -> void:
 	var role := "HELM" if is_helm else mode.to_upper()
 	var goal := "FOUND!" if found else "%.1f km" % (distance / 1000.0)
-	details.text = "  %s   •   %.0f m/s   •   %d pirates   •   HP %d   •   Gold %d   •   Fruits %d   •   One Piece %s   •   %s" % [
-		location, absf(speed), players, hp, gold, fruits, goal, role]
+	details.text = "  %s   •   %.0f m/s   •   %d pirates   •   HP %d   •   Gold %d   •   Fruits %d   •   Hits %d   •   One Piece %s   •   %s" % [
+		location, absf(speed), players, hp, gold, fruits, hits, goal, role]
 	heroes.text = ("▶ LUFFY    |    ZORO  [TAB]" if hero == "luffy"
 		else "  LUFFY    |    ▶ ZORO  [TAB]")
 	heroes.add_theme_color_override("font_color",

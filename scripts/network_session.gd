@@ -10,6 +10,9 @@ const UPDATE_INTERVAL := 1.0 / 12.0
 const SPEED_MAX := 23.0
 const WALK_SPEED := 7.2
 const SWIM_SPEED := 3.1
+const SPRINT_MULTIPLIER := 1.28
+const ATTACK_WINDUP := 0.12
+const ATTACK_ACTIVE_END := 0.32
 const HULL_CLEARANCE := 20.0
 const GUARD_COUNT := 3
 
@@ -83,12 +86,16 @@ func _reset() -> void:
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 
 func _spawn_player(id: int) -> void:
-	var side := float(players.size() % 3) * 1.6 - 1.6
+	var index := players.size()
+	var side := float(index % 3 - 1) * 2.3
+	var deck_z := 3.1 - float(index / 3) * 3.0
 	players[id] = {"name": "Pirate %d" % id, "mode": "deck", "hero": "luffy",
-		"local": Vector3(side, 3.1, 3.2), "world": Vector3.ZERO,
+		"local": Vector3(side, 3.1, deck_z), "world": Vector3.ZERO,
 		"hp": 100, "gold": 0, "fruits": 0, "one_piece": false,
-		"attack_number": 0, "next_attack": 0.0}
-	inputs[id] = {"forward": 0.0, "strafe": 0.0, "yaw": 0.0}
+		"attack_number": 0, "next_attack": 0.0,
+		"attack_start": 0.0, "attack_pending": false, "facing": 0.0,
+		"move_velocity": Vector3.ZERO, "hurt_number": 0, "hits_total": 0}
+	inputs[id] = {"forward": 0.0, "strafe": 0.0, "yaw": 0.0, "sprint": false}
 
 func _peer_connected(id: int) -> void:
 	if multiplayer.is_server():
@@ -122,7 +129,8 @@ func _send_input(data: Dictionary) -> void:
 func _sanitize_input(data: Dictionary) -> Dictionary:
 	return {"forward": clampf(float(data.get("forward", 0.0)), -1.0, 1.0),
 		"strafe": clampf(float(data.get("strafe", 0.0)), -1.0, 1.0),
-		"yaw": wrapf(float(data.get("yaw", 0.0)), -PI, PI)}
+		"yaw": wrapf(float(data.get("yaw", 0.0)), -PI, PI),
+		"sprint": bool(data.get("sprint", false))}
 
 func switch_character() -> void:
 	if multiplayer.is_server():
@@ -188,6 +196,7 @@ func _toggle_shore(id: int) -> void:
 		if helmsman_id == id:
 			helmsman_id = 0
 		pirate["mode"] = "swim"
+		pirate["move_velocity"] = Vector3.ZERO
 		pirate["world"] = ship_position + Vector3.RIGHT.rotated(Vector3.UP, ship_heading) * 10.0
 		_snap_to_surface(pirate)
 	else:
@@ -195,6 +204,7 @@ func _toggle_shore(id: int) -> void:
 		if pos.distance_to(ship_position) > 18.0 or absf(ship_speed) > 5.0:
 			return
 		pirate["mode"] = "deck"
+		pirate["move_velocity"] = Vector3.ZERO
 		pirate["local"] = Vector3(0, 3.1, 0)
 	players[id] = pirate
 	_push_state()
@@ -241,28 +251,41 @@ func _snap_to_surface(pirate: Dictionary) -> void:
 
 func _step_players(delta: float) -> void:
 	for id in players:
-		if id == helmsman_id:
-			continue
 		var pirate: Dictionary = players[id]
 		var command: Dictionary = inputs.get(id, {})
-		var motion := Vector3(float(command.get("strafe", 0.0)), 0,
-			-float(command.get("forward", 0.0))).limit_length(1.0)
 		var yaw := float(command.get("yaw", 0.0))
+		pirate["facing"] = yaw
+		if id == helmsman_id:
+			pirate["move_velocity"] = Vector3.ZERO
+			players[id] = pirate
+			continue
+		var motion := Vector3(float(command.get("strafe", 0.0)), 0.0,
+			-float(command.get("forward", 0.0))).limit_length(1.0)
 		motion = motion.rotated(Vector3.UP, yaw)
-		if str(pirate["mode"]) == "deck":
-			var loc: Vector3 = pirate["local"]
-			loc += motion.rotated(Vector3.UP, -ship_heading) * WALK_SPEED * delta
-			loc.x = clampf(loc.x, -3.2, 3.2)
-			loc.z = clampf(loc.z, -6.5, 6.7)
-			loc.y = 3.1
-			pirate["local"] = loc
+		var mode := str(pirate["mode"])
+		var speed := WALK_SPEED
+		var acceleration := 26.0
+		if mode == "swim":
+			speed = SWIM_SPEED
+			acceleration = 10.0
+		elif bool(command.get("sprint", false)):
+			speed *= SPRINT_MULTIPLIER
+		var velocity: Vector3 = pirate.get("move_velocity", Vector3.ZERO)
+		velocity = velocity.move_toward(motion * speed, acceleration * delta)
+		pirate["move_velocity"] = velocity
+		if mode == "deck":
+			var local_position: Vector3 = pirate["local"]
+			local_position += velocity.rotated(Vector3.UP, -ship_heading) * delta
+			local_position.x = clampf(local_position.x, -2.95, 2.95)
+			local_position.z = clampf(local_position.z, -6.3, 6.4)
+			local_position.y = 3.1
+			pirate["local"] = local_position
 		else:
-			var pos: Vector3 = pirate["world"]
-			var speed := SWIM_SPEED if str(pirate["mode"]) == "swim" else WALK_SPEED
-			pos += motion * speed * delta
-			pos.x = clampf(pos.x, -SeaWorld.WORLD_RADIUS, SeaWorld.WORLD_RADIUS)
-			pos.z = clampf(pos.z, -SeaWorld.WORLD_RADIUS, SeaWorld.WORLD_RADIUS)
-			pirate["world"] = pos
+			var position: Vector3 = pirate["world"]
+			position += velocity * delta
+			position.x = clampf(position.x, -SeaWorld.WORLD_RADIUS, SeaWorld.WORLD_RADIUS)
+			position.z = clampf(position.z, -SeaWorld.WORLD_RADIUS, SeaWorld.WORLD_RADIUS)
+			pirate["world"] = position
 			_snap_to_surface(pirate)
 		players[id] = pirate
 
@@ -281,34 +304,69 @@ func _attack(id: int) -> void:
 	if not players.has(id):
 		return
 	var pirate: Dictionary = players[id]
+	# Only grounded attacks: swimming and steering never produce damage.
 	if str(pirate["mode"]) != "land" or world_clock < float(pirate["next_attack"]):
 		return
 	var is_zoro := str(pirate["hero"]) == "zoro"
-	pirate["next_attack"] = world_clock + (0.55 if is_zoro else 0.42)
+	var duration := 0.62 if is_zoro else 0.50
+	pirate["next_attack"] = world_clock + duration
+	pirate["attack_start"] = world_clock
+	pirate["attack_pending"] = true
 	pirate["attack_number"] = int(pirate["attack_number"]) + 1
+	pirate["facing"] = float(inputs.get(id, {}).get("yaw", 0.0))
 	players[id] = pirate
-	var pos: Vector3 = pirate["world"]
-	var island := world.closest_island(pos)
-	var island_id: int = int(island["id"])
-	_ensure_guards(island)
-	var nearest := -1
-	var best := 5.2 if is_zoro else 3.8
-	var group: Array = guard_groups[island_id]
-	for i in range(group.size()):
-		var enemy: Dictionary = group[i]
-		if int(enemy["hp"]) <= 0:
-			continue
-		var target: Vector3 = enemy["pos"]
-		var dist := Vector2(target.x - pos.x, target.z - pos.z).length()
-		if dist < best:
-			best = dist
-			nearest = i
-	if nearest >= 0:
-		var hit_enemy: Dictionary = group[nearest]
-		hit_enemy["hp"] = maxi(0, int(hit_enemy["hp"]) - (2 if is_zoro else 1))
-		group[nearest] = hit_enemy
-		guard_groups[island_id] = group
 	_push_state()
+
+func _step_attacks() -> void:
+	for id in players:
+		var pirate: Dictionary = players[id]
+		if not bool(pirate.get("attack_pending", false)):
+			continue
+		var elapsed := world_clock - float(pirate["attack_start"])
+		if elapsed < ATTACK_WINDUP:
+			continue
+		# A single server-side hit query in the active frames, never every
+		# render frame. Per-target hit numbers drive client's impact effects.
+		pirate["attack_pending"] = false
+		if elapsed > ATTACK_ACTIVE_END or str(pirate["mode"]) != "land":
+			players[id] = pirate
+			continue
+		var is_zoro := str(pirate["hero"]) == "zoro"
+		var radius := 5.8 if is_zoro else 4.2
+		var max_targets := 2 if is_zoro else 1
+		var direction := Vector3(-sin(float(pirate["facing"])), 0.0,
+			-cos(float(pirate["facing"])))
+		var origin: Vector3 = pirate["world"]
+		var island := world.closest_island(origin)
+		var island_id: int = int(island["id"])
+		_ensure_guards(island)
+		var guards: Array = guard_groups[island_id]
+		var candidates: Array[Dictionary] = []
+		for i in range(guards.size()):
+			var enemy: Dictionary = guards[i]
+			if int(enemy["hp"]) <= 0:
+				continue
+			var offset: Vector3 = enemy["pos"] - origin
+			offset.y = 0
+			var distance := offset.length()
+			if distance < radius and distance > 0.01 and direction.dot(offset.normalized()) > 0.04:
+				candidates.append({"index": i, "distance": distance})
+		candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			return float(a["distance"]) < float(b["distance"]))
+		var hits := 0
+		for candidate in candidates:
+			if hits >= max_targets:
+				break
+			var index: int = int(candidate["index"])
+			var target: Dictionary = guards[index]
+			target["hp"] = maxi(0, int(target["hp"]) - (2 if is_zoro else 1))
+			target["hit_number"] = int(target.get("hit_number", 0)) + 1
+			guards[index] = target
+			hits += 1
+		if hits > 0:
+			pirate["hits_total"] = int(pirate["hits_total"]) + hits
+			guard_groups[island_id] = guards
+		players[id] = pirate
 
 func _ensure_guards(island: Dictionary) -> void:
 	var island_id: int = int(island["id"])
@@ -321,7 +379,7 @@ func _ensure_guards(island: Dictionary) -> void:
 			var angle := TAU * float(i) / float(GUARD_COUNT) + float(island_id) * 0.44
 			var pos := center + Vector3(cos(angle), 0, sin(angle)) * 18.0
 			pos.y = world.ground_height(island, pos)
-			group.append({"pos": pos, "home": pos, "hp": 3, "next_hit": 0.0})
+			group.append({"pos": pos, "home": pos, "hp": 3, "next_hit": 0.0, "hit_number": 0})
 	guard_groups[island_id] = group
 
 func _step_guards(delta: float) -> void:
@@ -367,6 +425,7 @@ func _step_guards(delta: float) -> void:
 			if target_id >= 0 and best < 3.0 and world_clock >= float(enemy["next_hit"]):
 				var victim: Dictionary = players[target_id]
 				victim["hp"] = int(victim["hp"]) - 10
+				victim["hurt_number"] = int(victim.get("hurt_number", 0)) + 1
 				if int(victim["hp"]) <= 0:
 					victim["hp"] = 100
 					victim["mode"] = "deck"
@@ -419,6 +478,7 @@ func _physics_process(delta: float) -> void:
 	world_clock += delta
 	_step_ship(delta)
 	_step_players(delta)
+	_step_attacks()
 	_step_guards(delta)
 	snapshot_clock += delta
 	save_clock += delta
@@ -431,7 +491,7 @@ func _physics_process(delta: float) -> void:
 
 func _push_state() -> void:
 	state = _make_snapshot()
-	if multiplayer.is_server():
+	if is_active and multiplayer.is_server():
 		_receive_snapshot.rpc(state)
 	state_updated.emit()
 
@@ -443,7 +503,9 @@ func _make_snapshot() -> Dictionary:
 		current_players[str(id)] = {"name": pirate["name"], "mode": pirate["mode"],
 			"hero": pirate["hero"], "local": pirate["local"], "world": pirate["world"],
 			"hp": pirate["hp"], "gold": pirate["gold"], "fruits": pirate["fruits"],
-			"one_piece": pirate["one_piece"], "attack_number": pirate["attack_number"]}
+			"one_piece": pirate["one_piece"], "attack_number": pirate["attack_number"],
+			"facing": pirate.get("facing", 0.0), "hurt_number": pirate.get("hurt_number", 0),
+			"hits_total": pirate.get("hits_total", 0)}
 	for island_id in guard_groups:
 		var group: Array = guard_groups[island_id]
 		var near := false

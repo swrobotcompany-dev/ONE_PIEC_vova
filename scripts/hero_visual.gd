@@ -1,15 +1,19 @@
 class_name HeroVisual
 extends Node3D
-# KayKit Adventurers CC0 GLB (rigged, animated) is bundled into native builds.
-# Custom lightweight accessories distinguish the One Piece heroes.
+# Real skinned KayKit Adventurers rigs (CC0), with lightweight bone-attached
+# identity accessories. Combat visuals never drive authoritative damage.
 const ROGUE_PATH := "res://assets/characters/rogue.glb"
 const BARBARIAN_PATH := "res://assets/characters/barbarian.glb"
 
 var hero_kind := ""
 var avatar_model: Node3D
 var animation_player: AnimationPlayer
+var attack_vfx: MeshInstance3D
+var hit_vfx: MeshInstance3D
 var swing_clock := 0.0
-var attack_index := -1
+var hit_clock := 0.0
+var attack_index := 0
+var hit_index := 0
 
 func _ready() -> void:
 	if hero_kind == "":
@@ -19,133 +23,197 @@ func set_hero(kind: String) -> void:
 	if hero_kind == kind and avatar_model != null:
 		return
 	hero_kind = kind
+	animation_player = null
+	attack_vfx = null
+	hit_vfx = null
+	swing_clock = 0.0
 	for child in get_children():
+		# Remove old rig immediately, not after the next rendered frame.
+		if child is Node3D:
+			child.visible = false
 		remove_child(child)
 		child.queue_free()
-	var source := BARBARIAN_PATH if kind == "zoro" else ROGUE_PATH
-	if ResourceLoader.exists(source):
-		var packed := load(source) as PackedScene
-		if packed != null:
-			avatar_model = packed.instantiate() as Node3D
-			add_child(avatar_model)
-			avatar_model.scale = Vector3.ONE * 1.1
-			_find_animation(avatar_model)
-	else:
-		# Models are fetched by the Docker build, not stored as heavy addons.
-		push_warning("Missing character asset: " + source + " (run tools/fetch_models.sh)")
-		avatar_model = Node3D.new()
-		add_child(avatar_model)
+	var path := ROGUE_PATH if kind == "luffy" else BARBARIAN_PATH
+	var packed := load(path) as PackedScene
+	if packed == null:
+		push_warning("Missing rigged character model: " + path)
+		return
+	avatar_model = packed.instantiate() as Node3D
+	add_child(avatar_model)
+	avatar_model.scale = Vector3.ONE
+	_find_animation(avatar_model)
 	if kind == "luffy":
 		_style_luffy()
 	elif kind == "zoro":
 		_style_zoro()
 	else:
 		_style_guard()
+	_make_combat_fx()
 
 func _find_animation(node: Node) -> void:
 	if node is AnimationPlayer:
 		animation_player = node
-		for animation_name in animation_player.get_animation_list():
-			if "idle" in str(animation_name).to_lower():
-				animation_player.play(animation_name)
-				break
 	for child in node.get_children():
 		_find_animation(child)
+	if node == avatar_model and animation_player != null:
+		_play_named("idle", 0.0)
+
+func _play_named(category: String, blend: float) -> bool:
+	if animation_player == null:
+		return false
+	for clip in animation_player.get_animation_list():
+		var name := str(clip).to_lower()
+		if category in name or (category == "run" and "walk" in name):
+			if animation_player.current_animation != clip:
+				animation_player.play(clip, blend)
+			return true
+	return false
 
 func set_motion(mode: String, moving: bool) -> void:
-	# Avoid allocating nodes or restarting animations on each snapshot.
-	if animation_player == null:
+	if avatar_model == null:
 		return
-	var desired := "idle"
+	# Never cancel an attack each network snapshot with the idle animation.
+	if swing_clock > 0:
+		return
 	if mode == "swim":
-		desired = "swim"
-	elif moving:
-		desired = "run"
-	for anim in animation_player.get_animation_list():
-		var name := str(anim).to_lower()
-		if desired in name or (desired == "run" and "walk" in name):
-			if animation_player.current_animation != anim:
-				animation_player.play(anim, 0.18)
-			return
+		if not _play_named("swim", 0.13):
+			_play_named("idle", 0.13)
+		avatar_model.rotation.x = lerpf(avatar_model.rotation.x, -0.5, 0.12)
+	else:
+		avatar_model.rotation.x = lerpf(avatar_model.rotation.x, 0.0, 0.16)
+		_play_named("run" if moving else "idle", 0.18)
 
 func show_attack(counter: int) -> void:
 	if counter == attack_index:
 		return
 	attack_index = counter
-	if animation_player == null or counter == 0:
+	if counter <= 0:
 		return
-	for anim in animation_player.get_animation_list():
-		var name := str(anim).to_lower()
-		if "attack" in name or "slash" in name or "punch" in name:
-			animation_player.play(anim, 0.05)
-			return
+	swing_clock = 0.36 if hero_kind == "luffy" else 0.48
+	if not _play_named("attack", 0.05):
+		_play_named("slash" if hero_kind == "zoro" else "punch", 0.05)
+	if attack_vfx != null:
+		attack_vfx.visible = true
+		attack_vfx.scale = Vector3.ONE
+
+func show_hit(counter: int) -> void:
+	if counter == hit_index:
+		return
+	hit_index = counter
+	if counter <= 0:
+		return
+	hit_clock = 0.26
+	if hit_vfx != null:
+		hit_vfx.visible = true
+
+func _process(delta: float) -> void:
+	if swing_clock > 0:
+		swing_clock = maxf(0.0, swing_clock - delta)
+		if attack_vfx != null:
+			attack_vfx.scale = Vector3.ONE * (1.0 + (1.0 - swing_clock / 0.48) * 0.6)
+			attack_vfx.visible = swing_clock > 0.04
+	if hit_clock > 0:
+		hit_clock = maxf(0.0, hit_clock - delta)
+		if hit_vfx != null:
+			hit_vfx.visible = hit_clock > 0
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node as Skeleton3D
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+func _bone_anchor(hints: Array[String], fallback: Vector3) -> Node3D:
+	var skeleton := _find_skeleton(avatar_model)
+	if skeleton != null:
+		for i in range(skeleton.get_bone_count()):
+			var name := str(skeleton.get_bone_name(i)).to_lower()
+			for term in hints:
+				if term in name:
+					var attachment := BoneAttachment3D.new()
+					attachment.bone_name = skeleton.get_bone_name(i)
+					skeleton.add_child(attachment)
+					return attachment
+	var anchor := Node3D.new()
+	anchor.position = fallback
+	add_child(anchor)
+	return anchor
 
 func _style_luffy() -> void:
-	# Straw hat, scarlet open vest, blue shorts, golden sash.
-	_cylinder(Vector3(0, 1.93, 0), 0.80, 0.10, Color(0.93, 0.72, 0.30))
-	_cylinder(Vector3(0, 2.06, 0), 0.50, 0.25, Color(0.94, 0.73, 0.31))
-	_cylinder(Vector3(0, 1.97, 0), 0.53, 0.07, Color(0.72, 0.17, 0.13))
-	_box(Vector3(-0.21, 1.05, -0.24), Vector3(0.35, 0.69, 0.09), Color(0.75, 0.11, 0.08))
-	_box(Vector3(0.21, 1.05, -0.24), Vector3(0.35, 0.69, 0.09), Color(0.75, 0.11, 0.08))
-	_box(Vector3(0, 0.75, 0), Vector3(0.88, 0.13, 0.68), Color(0.89, 0.69, 0.21))
+	# The rig owns the body and clothing: no intersecting duplicate torso mesh.
+	var head := _bone_anchor(["head"], Vector3(0, 1.9, 0))
+	_cylinder(Vector3(0, 0.36, 0), 0.72, 0.09, Color(0.93, 0.72, 0.30), head)
+	_cylinder(Vector3(0, 0.48, 0), 0.44, 0.27, Color(0.90, 0.70, 0.28), head)
+	_cylinder(Vector3(0, 0.38, 0), 0.46, 0.055, Color(0.75, 0.15, 0.10), head)
 
 func _style_zoro() -> void:
-	# Distinct moss-green hair, green waist sash and three katana.
+	var head := _bone_anchor(["head"], Vector3(0, 1.9, 0))
+	# Hair as an accessory attached to the head bone, not a static
+	# sphere that the animated character moves through.
 	var hair := SphereMesh.new()
-	hair.radius = 0.49
-	hair.height = 0.5
-	hair.radial_segments = 11
+	hair.radius = 0.42
+	hair.height = 0.33
+	hair.radial_segments = 12
 	hair.rings = 5
-	_mesh(hair, Vector3(0, 1.85, 0.0), Color(0.13, 0.57, 0.19))
-	_box(Vector3(0, 0.75, 0), Vector3(0.97, 0.19, 0.76), Color(0.14, 0.43, 0.18))
+	_mesh(hair, Vector3(0, 0.24, 0), Color(0.12, 0.59, 0.20), head)
+	var hip := _bone_anchor(["hips", "pelvis"], Vector3(0, 0.9, 0))
 	for i in range(3):
-		# Three unique blades at the left hip (compact mesh, no texture atlas).
 		var sword := Node3D.new()
-		add_child(sword)
-		sword.position = Vector3(-0.64, 0.96, (float(i) - 1.0) * 0.18)
-		sword.rotation_degrees.z = -26 + i * 11
+		hip.add_child(sword)
+		sword.position = Vector3(-0.53, -0.10, (float(i) - 1.0) * 0.17)
+		sword.rotation_degrees.z = -26 + i * 12
 		_add_sword(sword)
 
 func _style_guard() -> void:
-	_cylinder(Vector3(0, 1.95, 0), 0.52, 0.20, Color(0.36, 0.14, 0.11))
-	_box(Vector3(0, 1.02, -0.25), Vector3(0.67, 0.57, 0.1), Color(0.19, 0.19, 0.33))
-	var sword := Node3D.new()
-	sword.position = Vector3(-0.52, 0.75, 0)
-	add_child(sword)
-	_add_sword(sword)
+	var head := _bone_anchor(["head"], Vector3(0, 1.9, 0))
+	_cylinder(Vector3(0, 0.33, 0), 0.51, 0.17, Color(0.34, 0.14, 0.11), head)
 
 func _add_sword(parent: Node3D) -> void:
 	var blade := BoxMesh.new()
-	blade.size = Vector3(0.055, 1.15, 0.11)
-	_mesh(blade, Vector3(0, 0.71, 0), Color(0.79, 0.86, 0.89), parent)
+	blade.size = Vector3(0.055, 1.03, 0.10)
+	_mesh(blade, Vector3(0, 0.65, 0), Color(0.79, 0.84, 0.89), parent)
 	var grip := CylinderMesh.new()
-	grip.top_radius = 0.065
-	grip.bottom_radius = 0.065
-	grip.height = 0.48
-	_mesh(grip, Vector3(0, -0.04, 0), Color(0.15, 0.17, 0.25), parent)
-	var guard := BoxMesh.new()
-	guard.size = Vector3(0.31, 0.06, 0.17)
-	_mesh(guard, Vector3.ZERO, Color(0.90, 0.72, 0.29), parent)
+	grip.top_radius = 0.06
+	grip.bottom_radius = 0.06
+	grip.height = 0.42
+	_mesh(grip, Vector3(0, -0.02, 0), Color(0.12, 0.12, 0.20), parent)
 
-func _box(pos: Vector3, size: Vector3, tint: Color) -> void:
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	_mesh(mesh, pos, tint)
+func _make_combat_fx() -> void:
+	var attack_shape := TorusMesh.new()
+	attack_shape.inner_radius = 1.3 if hero_kind == "zoro" else 0.75
+	attack_shape.outer_radius = 1.54 if hero_kind == "zoro" else 0.96
+	attack_shape.rings = 6
+	attack_shape.ring_segments = 24
+	attack_vfx = _mesh(attack_shape, Vector3(0, 1.1, -1.8),
+		Color(0.4, 0.95, 1.0) if hero_kind == "zoro" else Color(1.0, 0.72, 0.26))
+	attack_vfx.rotation_degrees.x = 72.0
+	attack_vfx.visible = false
+	var hit_shape := SphereMesh.new()
+	hit_shape.radius = 0.6
+	hit_shape.height = 1.2
+	hit_vfx = _mesh(hit_shape, Vector3(0, 1.4, 0), Color(1.0, 0.35, 0.19))
+	hit_vfx.visible = false
 
-func _cylinder(pos: Vector3, radius: float, height: float, tint: Color) -> void:
+func _cylinder(pos: Vector3, radius: float, height: float,
+		tint: Color, parent: Node3D) -> void:
 	var mesh := CylinderMesh.new()
 	mesh.top_radius = radius
 	mesh.bottom_radius = radius
 	mesh.height = height
-	mesh.radial_segments = 16
-	_mesh(mesh, pos, tint)
+	mesh.radial_segments = 14
+	_mesh(mesh, pos, tint, parent)
 
-func _mesh(mesh: Mesh, pos: Vector3, tint: Color, parent: Node3D = null) -> void:
+func _mesh(mesh: Mesh, pos: Vector3, tint: Color,
+		parent: Node3D = null) -> MeshInstance3D:
 	var shape := MeshInstance3D.new()
 	shape.mesh = mesh
 	shape.position = pos
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = tint
-	mat.roughness = 0.83
+	mat.roughness = 0.72
 	shape.material_override = mat
 	(parent if parent != null else self).add_child(shape)
+	return shape

@@ -1,6 +1,11 @@
 extends SceneTree
 
 func _initialize() -> void:
+	var water := load("res://shaders/ocean.gdshader") as Shader
+	if water == null or not ("land_masks" in water.code):
+		push_error("Ocean shoreline mask shader missing")
+		quit(1)
+		return
 	var data := SeaWorld.new()
 	if data.islands.size() != SeaWorld.ISLAND_COUNT:
 		push_error("World generation failed")

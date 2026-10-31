@@ -16,6 +16,8 @@ var cam_pitch := 0.30
 var camera_distance := DEFAULT_CAMERA_DISTANCE
 var low_graphics := false
 var input_clock := 0.0
+var ocean_mask_clock := 0.0
+var graphics_clock := 0.0
 
 func _ready() -> void:
 	GameNet.session_ready.connect(_on_connected)
@@ -85,38 +87,35 @@ func _setup_ocean() -> void:
 	plane.subdivide_width = 72
 	plane.subdivide_depth = 72
 	ocean.mesh = plane
-	var shader := Shader.new()
-	shader.code = """
-shader_type spatial;
-render_mode cull_disabled, diffuse_burley;
-uniform vec4 deep_blue : source_color = vec4(0.025, 0.19, 0.31, 1.0);
-uniform vec4 turquoise : source_color = vec4(0.075, 0.48, 0.57, 1.0);
-varying vec3 ocean_world;
-void vertex() {
-	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX.y += sin(w.x * 0.023 + TIME * 1.2) * 0.42;
-	VERTEX.y += cos(w.z * 0.031 + TIME * 1.7) * 0.28;
-	VERTEX.y += sin((w.x + w.z) * 0.058 + TIME * 2.2) * 0.11;
-	ocean_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-void fragment() {
-	float bands = sin(ocean_world.x * 0.048 + TIME * 1.1) *
-		cos(ocean_world.z * 0.042 + TIME * 1.4);
-	float ripples = sin(ocean_world.x * 0.23 + TIME * 3.2) *
-		cos(ocean_world.z * 0.17 + TIME * 2.6);
-	float foam = smoothstep(0.85, 1.0, bands * 0.3 + ripples * 0.63);
-	ALBEDO = mix(mix(deep_blue.rgb, turquoise.rgb, 0.48 + bands * 0.20),
-		vec3(0.57, 0.89, 0.91), foam * 0.31);
-	ROUGHNESS = 0.26;
-	METALLIC = 0.06;
-	SPECULAR = 0.77;
-}
-"""
+	var shader := preload("res://shaders/ocean.gdshader")
 	var material := ShaderMaterial.new()
 	material.shader = shader
 	ocean.material_override = material
-	ocean.position.y = -0.3
+	ocean.position.y = -0.7
 	add_child(ocean)
+	_update_water_masks(Vector3.ZERO)
+
+func _update_water_masks(focus: Vector3) -> void:
+	if ocean == null:
+		return
+	var closest: Array[Dictionary] = []
+	for island in world.islands:
+		var center := Vector2(float(island["x"]), float(island["z"]))
+		var d := center.distance_to(Vector2(focus.x, focus.z))
+		if d < 2300.0 + float(island["radius"]):
+			closest.append({"info": island, "distance": d})
+	closest.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a["distance"]) < float(b["distance"]))
+	var masks := PackedVector4Array()
+	for i in range(8):
+		if i < closest.size():
+			var info: Dictionary = closest[i]["info"]
+			masks.append(Vector4(float(info["x"]), float(info["z"]),
+				float(info["radius"]), float(info["height"])))
+		else:
+			masks.append(Vector4.ZERO)
+	var water_material := ocean.material_override as ShaderMaterial
+	water_material.set_shader_parameter("land_masks", masks)
 
 func _host(port: int) -> void:
 	var error := GameNet.host_game(port)
@@ -154,7 +153,7 @@ func _physics_process(delta: float) -> void:
 		float(Input.is_key_pressed(KEY_S)),
 		"strafe": float(Input.is_key_pressed(KEY_D)) -
 		float(Input.is_key_pressed(KEY_A)),
-		"yaw": cam_yaw}
+		"yaw": cam_yaw, "sprint": Input.is_key_pressed(KEY_SHIFT)}
 	GameNet.submit_local_input(command)
 
 func _process(delta: float) -> void:
@@ -182,6 +181,10 @@ func _process(delta: float) -> void:
 	islands.set_focus(focus)
 	ocean.position.x = focus.x
 	ocean.position.z = focus.z
+	ocean_mask_clock += delta
+	if ocean_mask_clock > 0.35:
+		ocean_mask_clock = 0.0
+		_update_water_masks(focus)
 	var orbit := Vector3(sin(cam_yaw) * cos(cam_pitch), sin(cam_pitch),
 		cos(cam_yaw) * cos(cam_pitch))
 	var target_camera := focus + orbit * camera_distance
@@ -197,7 +200,8 @@ func _process(delta: float) -> void:
 			distance, int(current.get("helmsman", 0)) == multiplayer.get_unique_id(),
 			int(local_player.get("gold", 0)), bool(local_player.get("one_piece", false)),
 			str(local_player.get("hero", "luffy")), str(local_player.get("mode", "deck")),
-			int(local_player.get("hp", 100)), int(local_player.get("fruits", 0)))
+			int(local_player.get("hp", 100)), int(local_player.get("fruits", 0)),
+			int(local_player.get("hits_total", 0)))
 
 func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 	for id in avatars.keys():
@@ -226,7 +230,7 @@ func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 		var distance := avatar.global_position.distance_to(target)
 		avatar.global_position = target if distance > 40.0 else avatar.global_position.lerp(target,
 			minf(delta * 12.0, 1.0))
-		var moving := distance > 0.02
+		var moving := distance > 0.025
 		if mode == "deck":
 			var deck_loc: Vector3 = pirate["local"]
 			var previous: Vector3 = last_deck_positions.get(id, deck_loc)
@@ -234,12 +238,11 @@ func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 			last_deck_positions[id] = deck_loc
 		avatar.set_motion(mode, moving)
 		avatar.show_attack(int(pirate.get("attack_number", 0)))
+		avatar.show_hit(int(pirate.get("hurt_number", 0)))
 		if mode == "deck":
-			avatar.rotation.y = ship.rotation.y
+			avatar.rotation.y = ship.rotation.y + float(pirate.get("facing", 0.0))
 		else:
-			var velocity: Vector3 = target - last_locations.get(id, target)
-			if velocity.length_squared() > 0.01:
-				avatar.rotation.y = atan2(-velocity.x, -velocity.z)
+			avatar.rotation.y = float(pirate.get("facing", 0.0))
 		last_locations[id] = target
 
 func _sync_guards(groups: Dictionary, focus: Vector3, delta: float) -> void:
@@ -260,12 +263,24 @@ func _sync_guards(groups: Dictionary, focus: Vector3, delta: float) -> void:
 				guard.name = "PirateGuard_" + key
 				add_child(guard)
 				guard.set_hero("guard")
+				var hp_label := Label3D.new()
+				hp_label.name = "HealthLabel"
+				hp_label.position = Vector3(0, 3.3, 0)
+				hp_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				hp_label.font_size = 32
+				hp_label.pixel_size = 0.042
+				hp_label.modulate = Color(1.0, 0.45, 0.32)
+				guard.add_child(hp_label)
 				guard.global_position = pos
 				guardians[key] = guard
 			var visual: HeroVisual = guardians[key]
 			var old: Vector3 = visual.global_position
 			visual.global_position = old.lerp(pos, minf(delta * 8.0, 1.0))
 			visual.set_motion("land", old.distance_to(pos) > 0.02)
+			visual.show_hit(int(enemy.get("hit_number", 0)))
+			var hp_label := visual.get_node_or_null("HealthLabel") as Label3D
+			if hp_label != null:
+				hp_label.text = "PIRATE  ♥ %d" % int(enemy.get("hp", 0))
 	for key in guardians.keys():
 		if not visible_keys.has(key):
 			guardians[key].queue_free()
@@ -279,7 +294,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		cam_pitch = clampf(cam_pitch + event.relative.y * 0.003, -0.08, 0.90)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+				GameNet.attack()
+			else:
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			camera_distance = maxf(camera_distance - 2.0, 10.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
