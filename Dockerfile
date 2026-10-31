@@ -3,7 +3,7 @@ ARG GODOT_VERSION=4.7.2
 FROM debian:bookworm-slim AS engine
 ARG GODOT_VERSION
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl unzip libstdc++6 \
+ && apt-get install -y --no-install-recommends ca-certificates curl unzip libstdc++6 libfontconfig1 fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/* \
  && curl --fail --location --retry 3 \
    "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
