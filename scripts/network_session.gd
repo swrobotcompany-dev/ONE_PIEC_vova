@@ -456,7 +456,7 @@ func _step_attacks() -> void:
 			var offset: Vector3 = enemy["pos"] - origin
 			offset.y = 0
 			var distance := offset.length()
-			if distance < radius and distance > 0.01 and direction.dot(offset.normalized()) > 0.04 and not world.segment_hits_building(island, origin, target):
+			if distance < radius and distance > 0.01 and direction.dot(offset.normalized()) > 0.04 and not world.segment_hits_building(island, origin, enemy["pos"]):
 				candidates.append({"index": i, "distance": distance})
 		candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			return float(a["distance"]) < float(b["distance"]))
