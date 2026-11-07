@@ -88,6 +88,10 @@ func _initialize() -> void:
 		_fail("Zero aim bypassed fruit cast validation")
 		return
 
+	# Test the uninfused hero weapons: the preceding restriction tests left
+	# magma selected, whose splash intentionally consumes a shot on impact.
+	pirate["abilities"] = []
+	pirate["selected_fruit"] = ""
 	# Luffy and Zoro do not share one generic gun projectile.
 	pirate["hero"] = "luffy"
 	pirate["next_shot"] = 0.0
