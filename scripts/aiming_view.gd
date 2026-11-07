@@ -58,7 +58,7 @@ func get_aim(player_pos: Vector3, camera_yaw: float) -> Vector2:
 func shoot(player_pos: Vector3, camera_yaw: float, hero: String) -> void:
 	if shot_cooldown > 0.0:
 		return
-	shot_cooldown = 0.56 if hero == "luffy" else 0.82
+	shot_cooldown = 0.40 if hero == "luffy" else 0.86
 	GameNet.fire_projectile(get_aim(player_pos, camera_yaw))
 
 func update_view(delta: float, hero: Node3D, camera_yaw: float,
@@ -84,15 +84,93 @@ func update_view(delta: float, hero: Node3D, camera_yaw: float,
 	for id in live:
 		var shot: Dictionary = live[id]
 		if not bullets.has(id):
-			var mesh := SphereMesh.new()
-			mesh.radius = 0.6 if str(shot["hero"]) == "luffy" else 0.9
-			mesh.height = 1.2
-			mesh.radial_segments = 12
-			mesh.rings = 6
-			var color := Color(1.0, 0.67, 0.19) if str(shot["hero"]) == "luffy" else Color(0.31, 0.93, 0.97)
-			bullets[id] = _shape(mesh, color, true)
-			bullets[id].global_position = shot["pos"]
-		var bullet: MeshInstance3D = bullets[id]
-		bullet.global_position = bullet.global_position.lerp(shot["pos"], minf(delta * 16.0, 1.0))
+			var visual := _make_bullet(shot)
+			bullets[id] = visual
+			visual.global_position = shot["pos"]
+		var bullet: Node3D = bullets[id]
+		bullet.global_position = bullet.global_position.lerp(shot["pos"], minf(delta * 19.0, 1.0))
 		var direction: Vector3 = shot["velocity"]
-		bullet.rotation.y = atan2(-direction.x, -direction.z)
+		if direction.length_squared() > 0.01:
+			bullet.rotation.y = atan2(-direction.x, -direction.z)
+		else:
+			bullet.rotation.y += delta * 0.9
+		var age := float(bullet.get_meta("age", 0.0)) + delta
+		bullet.set_meta("age", age)
+		if bool(bullet.get_meta("pulse", false)):
+			var radius := float(shot.get("radius", 5.0))
+			bullet.scale = Vector3.ONE * radius * minf(1.0, 0.22 + age * 2.2)
+		elif str(shot.get("hero", "")) == "fruit":
+			bullet.rotate_object_local(Vector3.FORWARD, delta * 2.8)
+
+func _make_bullet(shot: Dictionary) -> Node3D:
+	var kind := str(shot.get("kind", "fist"))
+	var visual := Node3D.new()
+	add_child(visual)
+	visual.set_meta("age", 0.0)
+	var is_pulse := kind in ["smoke", "flower", "gravity", "quake", "barrier"]
+	if is_pulse:
+		visual.set_meta("pulse", true)
+		var ring := TorusMesh.new()
+		ring.inner_radius = 0.82
+		ring.outer_radius = 1.0
+		ring.rings = 8
+		ring.ring_segments = 32
+		var wave := _part(visual, ring, FruitCatalog.tint(kind))
+		wave.position.y = -1.25
+		return visual
+	if kind == "fist":
+		# Luffy: elastic forearm and a visible oversized flying punch.
+		var arm := CapsuleMesh.new()
+		arm.radius = 0.31
+		arm.height = 2.45
+		var stretch := _part(visual, arm, Color(0.98, 0.68, 0.44))
+		stretch.rotation.x = PI * 0.5
+		stretch.position.z = 0.8
+		var hand := SphereMesh.new()
+		hand.radius = 0.65
+		hand.height = 1.1
+		_part(visual, hand, Color(1.0, 0.80, 0.54)).position.z = -0.55
+		return visual
+	if kind == "slash":
+		# Zoro: a wide horizontal turquoise flying blade, not a bullet.
+		var blade := BoxMesh.new()
+		blade.size = Vector3(3.8, 0.16, 0.42)
+		var edge := _part(visual, blade, Color(0.23, 0.94, 0.96))
+		edge.rotation.z = -0.21
+		var highlight := BoxMesh.new()
+		highlight.size = Vector3(3.2, 0.08, 0.55)
+		var shine := _part(visual, highlight, Color(0.90, 1.0, 1.0))
+		shine.rotation.z = -0.21
+		return visual
+	var orb := SphereMesh.new()
+	orb.radius = clampf(float(shot.get("radius", 1.5)) * 0.38, 0.38, 1.10)
+	orb.height = orb.radius * 2.0
+	orb.radial_segments = 12
+	orb.rings = 6
+	_part(visual, orb, FruitCatalog.tint(kind))
+	var halo := TorusMesh.new()
+	halo.inner_radius = 0.72
+	halo.outer_radius = 0.93
+	halo.rings = 6
+	halo.ring_segments = 20
+	var aura := _part(visual, halo, FruitCatalog.tint(kind).lightened(0.3))
+	aura.scale = Vector3.ONE * (orb.radius * 1.4)
+	aura.rotation.x = 0.45
+	if kind in ["lightning", "light", "string", "ice"]:
+		# Piercing beams and shards read as long, thin projectiles.
+		visual.scale = Vector3(0.58, 0.58, 2.1)
+	return visual
+
+func _part(parent: Node3D, mesh: Mesh, color: Color) -> MeshInstance3D:
+	var part := MeshInstance3D.new()
+	part.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.emission_enabled = true
+	material.emission = color
+	material.emission_energy_multiplier = 1.9
+	part.material_override = material
+	part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(part)
+	return part
