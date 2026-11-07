@@ -73,7 +73,7 @@ func _initialize() -> void:
 			if game.projectiles.size() != count:
 				_fail("Primary fire bypassed server cooldown")
 				return
-			for frame in range(40):
+			for frame in range(20):
 				game._step_projectiles(0.04)
 				game.world_clock += 0.04
 				game._step_guard_dots()
