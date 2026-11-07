@@ -68,7 +68,7 @@ func _initialize() -> void:
 			if fruit == "barrier" and float(game.players[1]["shield_until"]) <= game.world_clock:
 				_fail("Barrier shot did not protect its user")
 				return
-			var count := game.projectiles.size()
+			var count: int = game.projectiles.size()
 			game._server_fire(1, Vector2(0, -1))
 			if game.projectiles.size() != count:
 				_fail("Primary fire bypassed server cooldown")
@@ -87,28 +87,28 @@ func _initialize() -> void:
 				_fail("Infused freeze/root missing: " + fruit)
 				return
 
-	# Every third shot has a different signature for each hero.
-	var pirate: Dictionary = game.players[1]
-	pirate["hero"] = hero
-	pirate["abilities"] = []
-	pirate["selected_fruit"] = ""
-	pirate["shot_combo"] = 0
-	pirate["mode"] = "land"
-	game.players[1] = pirate
-	for volley in range(3):
-		pirate = game.players[1]
-		pirate["next_shot"] = 0.0
+		# Every third shot has a different signature for each hero.
+		var pirate: Dictionary = game.players[1]
+		pirate["hero"] = hero
+		pirate["abilities"] = []
+		pirate["selected_fruit"] = ""
+		pirate["shot_combo"] = 0
+		pirate["mode"] = "land"
 		game.players[1] = pirate
-		game.projectiles.clear()
-		game.world_clock += 2.0
-		game._server_fire(1, Vector2(0, -1))
-		var expected := (3 if hero == "luffy" else 2) if volley == 2 else 1
-		if game.projectiles.size() != expected:
-			_fail("Incorrect %s combo volley %d" % [hero, volley + 1])
-			return
-		if int(game.players[1]["shot_combo"]) != (volley + 1) % 3:
-			_fail("Server did not advance shot combo")
-			return
+		for volley in range(3):
+			pirate = game.players[1]
+			pirate["next_shot"] = 0.0
+			game.players[1] = pirate
+			game.projectiles.clear()
+			game.world_clock += 2.0
+			game._server_fire(1, Vector2(0, -1))
+			var expected := (3 if hero == "luffy" else 2) if volley == 2 else 1
+			if game.projectiles.size() != expected:
+				_fail("Incorrect %s combo volley %d" % [hero, volley + 1])
+				return
+			if int(game.players[1]["shot_combo"]) != (volley + 1) % 3:
+				_fail("Server did not advance shot combo")
+				return
 
 	# An unowned selected fruit must never grant an infused projectile.
 	var unauthorized: Dictionary = game.players[1]
