@@ -111,29 +111,29 @@ func _initialize() -> void:
 			return
 
 	# An unowned selected fruit must never grant an infused projectile.
-	var pirate: Dictionary = game.players[1]
-	pirate["abilities"] = []
-	pirate["selected_fruit"] = "magma"
-	pirate["next_shot"] = 0.0
-	pirate["shot_combo"] = 0
-	game.players[1] = pirate
+	var unauthorized: Dictionary = game.players[1]
+	unauthorized["abilities"] = []
+	unauthorized["selected_fruit"] = "magma"
+	unauthorized["next_shot"] = 0.0
+	unauthorized["shot_combo"] = 0
+	game.players[1] = unauthorized
 	game.projectiles.clear()
 	game.world_clock += 2.0
 	game._server_fire(1, Vector2(0, -1))
 	if str(game.projectiles.values()[0].get("infusion", "")) != "":
 		_fail("Server allowed an unowned fruit to infuse a shot")
 		return
-	pirate = game.players[1]
-	pirate["mode"] = "swim"
-	pirate["next_shot"] = 0.0
-	game.players[1] = pirate
+	unauthorized = game.players[1]
+	unauthorized["mode"] = "swim"
+	unauthorized["next_shot"] = 0.0
+	game.players[1] = unauthorized
 	game.projectiles.clear()
 	game._server_fire(1, Vector2(0, -1))
 	if not game.projectiles.is_empty():
 		_fail("Player fired while swimming")
 		return
-	pirate["mode"] = "land"
-	game.players[1] = pirate
+	unauthorized["mode"] = "land"
+	game.players[1] = unauthorized
 	game._server_fire(1, Vector2.ZERO)
 	if not game.projectiles.is_empty():
 		_fail("Zero direction bypassed primary fire validation")
