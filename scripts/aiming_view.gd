@@ -61,7 +61,9 @@ func shoot(player_pos: Vector3, camera_yaw: float, hero: String,
 		return
 	var style := FruitCatalog.shot_style(selected_fruit)
 	shot_cooldown = (0.40 if hero == "luffy" else 0.86) * float(style.get("rate", 1.0))
-	GameNet.fire_projectile(get_aim(player_pos, camera_yaw))
+	var session := get_node_or_null("/root/GameNet")
+	if session != null:
+		session.fire_projectile(get_aim(player_pos, camera_yaw))
 
 func update_view(delta: float, hero: Node3D, camera_yaw: float,
 		snapshot: Dictionary, can_aim: bool) -> void:

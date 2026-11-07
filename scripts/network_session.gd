@@ -398,7 +398,7 @@ func _server_fire(id: int, aim: Vector2) -> void:
 	var base_radius := 1.25 if is_luffy else 2.2
 	var base_pierce := 1 if is_luffy else 3
 	var spread := float(style.get("spread", 0.0))
-	var offsets: Array[float] = [0.0]
+	var offsets: Array = [0.0]
 	if combo % 3 == 0:
 		# Luffy's third shot is a three-punch Gatling burst; Zoro's is a
 		# two-blade crossing wave. The heroes never share the same volley.
