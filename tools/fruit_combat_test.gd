@@ -21,7 +21,9 @@ func _initialize() -> void:
 		player["world"] = home + Vector3(0, 0, 4.0 if kind == "barrier" else 8.0)
 		player["abilities"] = [kind]
 		player["selected_fruit"] = kind
-		player["fruit_ranks"] = {kind: 1}
+		var ranks: Dictionary = {}
+		ranks[kind] = 1
+		player["fruit_ranks"] = ranks
 		player["next_fruit"] = 0.0
 		player["shield_until"] = 0.0
 		game.players[1] = player
@@ -39,7 +41,7 @@ func _initialize() -> void:
 		if float(game.players[1]["next_fruit"]) <= game.world_clock:
 			_fail("No server cooldown for fruit: " + kind)
 			return
-		var before_count := game.projectiles.size()
+		var before_count: int = game.projectiles.size()
 		game._server_cast_fruit(1, Vector2(0, -1))
 		if game.projectiles.size() != before_count:
 			_fail("Fruit cooldown bypass: " + kind)
