@@ -30,6 +30,41 @@ const TINTS := {
 	"barrier": Color(0.35, 1.0, 0.55), "poison": Color(0.57, 1.0, 0.22)
 }
 
+# A selected fruit changes normal LMB attacks as well as providing a Q skill.
+# Damage, crowd control and trajectories are all resolved by the LAN server.
+const SHOT_INFUSIONS := {
+	"rubber": {"speed": 1.18, "push": 4.5, "spread": 0.16, "rate": 0.88},
+	"fire": {"damage": 1, "splash": 3.0, "status": "burn", "duration": 3.0},
+	"ice": {"radius": 1.18, "status": "freeze", "duration": 1.8},
+	"lightning": {"speed": 1.65, "pierce": 1, "chain": true},
+	"sand": {"spread": 0.25, "status": "slow", "duration": 2.3},
+	"smoke": {"radius": 1.25, "splash": 3.5, "status": "slow", "duration": 2.0},
+	"flower": {"pierce": 1, "status": "root", "duration": 1.2},
+	"string": {"pierce": 2, "status": "root", "duration": 1.7},
+	"light": {"speed": 1.9, "pierce": 2, "radius": 0.78},
+	"gravity": {"speed": 0.85, "splash": 4.2, "status": "slow", "duration": 2.2, "push": -4.0},
+	"magma": {"damage": 2, "speed": 0.75, "splash": 4.8, "status": "burn", "duration": 4.0, "rate": 1.16},
+	"quake": {"splash": 4.0, "push": 6.0},
+	"barrier": {"radius": 1.2, "push": 3.0, "shield": 0.85},
+	"poison": {"splash": 3.0, "status": "poison", "duration": 5.0}
+}
+
+static func shot_style(kind: String, rank: int = 1) -> Dictionary:
+	if not SHOT_INFUSIONS.has(kind):
+		return {}
+	var style: Dictionary = SHOT_INFUSIONS[kind].duplicate()
+	if rank >= 2 and style.has("duration"):
+		style["duration"] = float(style["duration"]) * 1.25
+	if rank >= 3:
+		style["damage"] = int(style.get("damage", 0)) + 1
+	if rank >= 4:
+		style["pierce"] = int(style.get("pierce", 0)) + 1
+		if style.has("splash"):
+			style["splash"] = float(style["splash"]) * 1.25
+		if style.has("shield"):
+			style["shield"] = float(style["shield"]) + 0.5
+	return style
+
 static func for_island(island_id: int) -> String:
 	return TYPES[posmod(island_id, TYPES.size())]
 

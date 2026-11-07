@@ -51,3 +51,9 @@ The previous water-triangle clipping algorithm incorrectly clipped polygons agai
 ## Fruit combat (arcade fan-game rules)
 
 Every island reward maps to one of 14 active combat schools; the 56 islands yield four mastery levels for each school. All skills have independent server-side cooldowns, hit tests, wall occlusion, and enemy status effects (burn, poison, slow, freeze, root, knockback, chain lightning). Barrier reduces incoming guard damage while active. Fruit powers are shared between playable characters for gameplay convenience; **Zoro does not canonically have a Devil Fruit**. This is a fan-game combat adaptation, not a claim about canon.
+
+## Fruit-infused shooting and hero combos
+
+Every one of the 14 collectible Devil Fruit schools now changes **both the Q special ability and normal LMB fire**. Choose a collected fruit with **C**: subsequent punches and sword waves inherit that fruit's distinct server-side effect. Rubber speeds up and pushes; fire and magma burn; ice freezes; lightning chains; sand and smoke slow; flower and string root; light pierces; gravity pulls; quake knocks back; barrier briefly shields the shooter; poison applies damage over time. Fruit mastery improves infused shots, and all hit checks, score awards and cooldowns remain server-authoritative.
+
+**Luffy** shoots quick alternating elastic punches, with a **three-punch Gatling volley on every third shot**. **Zoro** fires slower, wider, guard-piercing sword waves, with **two crossing blades on every third shot**. Their weapon silhouettes remain different, while the selected fruit adds a colored aura visible over LAN. **Q** continues to cast the fruit's more powerful independent combat skill. Swimming and steering disable both attacks. The automated combat test covers 14 infusions × 2 heroes, damage/statuses, combos and ownership checks.

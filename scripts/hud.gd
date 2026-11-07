@@ -50,7 +50,7 @@ func _ready() -> void:
 	standings.add_theme_color_override("font_color", Color(1.0, 0.88, 0.55))
 	standings.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(standings)
-	standings.offset_top = 176.0
+	standings.offset_top = 230.0
 	abilities_label = Label.new()
 	abilities_label.anchor_left = 1.0
 	abilities_label.anchor_right = 1.0
@@ -204,8 +204,10 @@ func update_details(speed: float, location: String, players: int,
 	var short_list := " • ".join(powers.slice(0, 3))
 	if powers.size() > 3:
 		short_list += " +%d" % (powers.size() - 3)
-	abilities_label.text = "🍈  Q: %s • %s%s\nC: Сменить (%d открыто)\n%s" % [
-		equipped, ready, defense, powers.size(), short_list]
+	var weapon := "серия кулаков / Гатлинг" if hero == "luffy" else "волна меча / двойной разрез"
+	var element := "без стихии" if selected == "" else FruitCatalog.label(selected)
+	abilities_label.text = "🍈  Q: %s • %s%s\nЛКМ: %s + %s\nC: Сменить (%d открыто)\n%s" % [
+		equipped, ready, defense, weapon, element, powers.size(), short_list]
 	heroes.text = ("▶ LUFFY    |    ZORO  [TAB]" if hero == "luffy"
 		else "  LUFFY    |    ▶ ZORO  [TAB]")
 	heroes.add_theme_color_override("font_color",

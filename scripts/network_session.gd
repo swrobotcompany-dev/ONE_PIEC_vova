@@ -106,7 +106,7 @@ func _spawn_player(id: int) -> void:
 		"attack_number": 0, "next_attack": 0.0,
 		"attack_start": 0.0, "attack_pending": false, "facing": 0.0,
 		"move_velocity": Vector3.ZERO, "hurt_number": 0, "hits_total": 0,
-		"next_shot": 0.0, "aim_lock_until": 0.0, "kills": 0, "score": 0,
+		"next_shot": 0.0, "shot_combo": 0, "aim_lock_until": 0.0, "kills": 0, "score": 0,
 		"abilities": [], "fruit_ranks": {}, "selected_fruit": "",
 		"next_fruit": 0.0, "shield_until": 0.0,
 		"jump_count": 0, "jump_height": 0.0, "jump_speed": 0.0}
@@ -181,6 +181,7 @@ func _switch(id: int) -> void:
 		return
 	var pirate: Dictionary = players[id]
 	pirate["hero"] = "zoro" if str(pirate["hero"]) == "luffy" else "luffy"
+	pirate["shot_combo"] = 0
 	players[id] = pirate
 	_push_state()
 
@@ -372,18 +373,52 @@ func _server_fire(id: int, aim: Vector2) -> void:
 	if str(pirate["mode"]) == "swim" or world_clock < float(pirate["next_shot"]):
 		return
 	var hero := str(pirate["hero"])
+	var is_luffy := hero == "luffy"
 	var direction := aim.normalized()
-	pirate["next_shot"] = world_clock + (0.40 if hero == "luffy" else 0.86)
+	# Never trust the selected power in a network request: only owned fruits
+	# can infuse shots, and all damage/cooldowns remain server authoritative.
+	var fruit := str(pirate.get("selected_fruit", ""))
+	if not FruitCatalog.TYPES.has(fruit) or not pirate.get("abilities", []).has(fruit):
+		fruit = ""
+	var rank := clampi(int(pirate.get("fruit_ranks", {}).get(fruit, 1)), 1, 4)
+	var style := FruitCatalog.shot_style(fruit, rank)
+	var combo := int(pirate.get("shot_combo", 0)) + 1
+	pirate["shot_combo"] = combo % 3
+	pirate["next_shot"] = world_clock + (0.40 if is_luffy else 0.86) * float(style.get("rate", 1.0))
 	pirate["facing"] = atan2(-direction.x, -direction.y)
 	pirate["aim_lock_until"] = world_clock + 0.30
+	if fruit == "barrier":
+		pirate["shield_until"] = maxf(float(pirate.get("shield_until", 0.0)),
+			world_clock + float(style.get("shield", 0.85)))
 	players[id] = pirate
 	var origin := _player_origin(pirate)
-	if hero == "luffy":
-		# Elastic fist: fast, narrow, frequent hits with a little knockback.
-		_spawn_shot(id, hero, "fist", origin, direction, 35.0, 1.4, 1, 1.25, 1, 0.0, "", 0.0, 2.5)
-	else:
-		# Flying three-sword slash: wider, slower cooldown, penetrates 3 guards.
-		_spawn_shot(id, hero, "slash", origin, direction, 44.0, 1.5, 2, 2.2, 3)
+	var kind := "fist" if is_luffy else "slash"
+	var base_speed := 35.0 if is_luffy else 44.0
+	var base_damage := 1 if is_luffy else 2
+	var base_radius := 1.25 if is_luffy else 2.2
+	var base_pierce := 1 if is_luffy else 3
+	var spread := float(style.get("spread", 0.0))
+	var offsets: Array[float] = [0.0]
+	if combo % 3 == 0:
+		# Luffy's third shot is a three-punch Gatling burst; Zoro's is a
+		# two-blade crossing wave. The heroes never share the same volley.
+		offsets = [-maxf(spread, 0.15), 0.0, maxf(spread, 0.15)] if is_luffy else [
+			-maxf(spread * 0.5, 0.13), maxf(spread * 0.5, 0.13)]
+	elif spread > 0.0:
+		offsets = [-spread, 0.0, spread] if is_luffy else [0.0, spread * 0.55]
+	for offset in offsets:
+		var shot_origin := origin
+		if is_luffy:
+			var hand := -1.0 if combo % 2 == 0 else 1.0
+			shot_origin += Vector3(-direction.y, 0.0, direction.x) * hand * 0.32
+		_spawn_shot(id, hero, kind, shot_origin, direction.rotated(offset),
+			base_speed * float(style.get("speed", 1.0)), 1.4 if is_luffy else 1.5,
+			base_damage + int(style.get("damage", 0)),
+			base_radius * float(style.get("radius", 1.0)),
+			base_pierce + int(style.get("pierce", 0)),
+			float(style.get("splash", 0.0)), str(style.get("status", "")),
+			float(style.get("duration", 0.0)),
+			float(style.get("push", 2.5 if is_luffy else 0.0)), fruit)
 	_push_state()
 
 func _player_origin(pirate: Dictionary) -> Vector3:
@@ -398,14 +433,15 @@ func _player_origin(pirate: Dictionary) -> Vector3:
 func _spawn_shot(owner_id: int, hero: String, kind: String, origin: Vector3,
 		direction: Vector2, speed: float, life: float, damage: int,
 		radius: float = 1.5, pierce: int = 1, splash: float = 0.0,
-		status: String = "", status_time: float = 0.0, push: float = 0.0) -> void:
+		status: String = "", status_time: float = 0.0, push: float = 0.0,
+		infusion: String = "") -> void:
 	projectile_sequence += 1
 	projectiles[projectile_sequence] = {
 		"owner": owner_id, "hero": hero, "kind": kind, "pos": origin,
 		"velocity": Vector3(direction.x, 0.0, direction.y) * speed,
 		"life": life, "damage": damage, "radius": radius, "pierce": pierce,
 		"splash": splash, "status": status, "status_time": status_time,
-		"push": push, "hit_guards": [], "visual_only": false}
+		"push": push, "infusion": infusion, "hit_guards": [], "visual_only": false}
 
 func _spawn_pulse(owner_id: int, kind: String, center: Vector3, radius: float) -> void:
 	projectile_sequence += 1
@@ -562,7 +598,7 @@ func _step_projectiles(delta: float) -> void:
 						str(shot["status"]), float(shot["status_time"]), float(shot["push"]), start)
 					shot["hit_guards"].append(i)
 					shot["pierce"] = int(shot["pierce"]) - 1
-					if str(shot["kind"]) == "lightning":
+					if str(shot["kind"]) == "lightning" or str(shot.get("infusion", "")) == "lightning":
 						_area_hit(int(shot["owner"]), pos, 8.0, 1, "", 0.0, 0.0, 2, Vector2.ZERO, i)
 					if int(shot["pierce"]) <= 0:
 						consumed = true
@@ -651,7 +687,7 @@ func _projectile_snapshot() -> Dictionary:
 		var shot: Dictionary = projectiles[id]
 		results[str(id)] = {"pos": shot["pos"], "hero": shot["hero"],
 			"kind": shot["kind"], "radius": shot["radius"],
-			"velocity": shot["velocity"]}
+			"infusion": shot.get("infusion", ""), "velocity": shot["velocity"]}
 	return results
 
 func jump() -> void:
@@ -975,7 +1011,7 @@ func _make_snapshot() -> Dictionary:
 			"kills": pirate.get("kills", 0), "score": pirate.get("score", 0),
 			"abilities": pirate.get("abilities", []),
 			"fruit_ranks": pirate.get("fruit_ranks", {}),
-			"selected_fruit": pirate.get("selected_fruit", ""),
+			"shot_combo": pirate.get("shot_combo", 0), "selected_fruit": pirate.get("selected_fruit", ""),
 			"fruit_cooldown": maxf(0.0, float(pirate.get("next_fruit", 0.0)) - world_clock),
 			"shield": maxf(0.0, float(pirate.get("shield_until", 0.0)) - world_clock),
 			"jump_count": pirate.get("jump_count", 0)}

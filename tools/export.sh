@@ -11,6 +11,7 @@ godot --headless --path /game --script res://tools/combat_test.gd
 godot --headless --path /game --script res://tools/kills_test.gd
 godot --headless --path /game --script res://tools/abilities_test.gd
 godot --headless --path /game --script res://tools/fruit_combat_test.gd
+godot --headless --path /game --script res://tools/hero_fruit_shots_test.gd
 timeout -k 3s 45s godot --headless --path /game --script res://tools/world_integrity_test.gd
 # Boot a real headless server briefly to check the multiplayer scene.
 godot --headless --path /game --quit-after 5 -- --server

@@ -31,5 +31,7 @@ jobs:
         run: timeout -k 3s 30s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/abilities_test.gd
       - name: Validate all fourteen Devil Fruit combat skills and hero projectiles
         run: timeout -k 3s 30s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/fruit_combat_test.gd
+      - name: Verify fruit-infused LMB shots for both heroes and third-shot combos
+        run: timeout -k 3s 30s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/hero_fruit_shots_test.gd
       - name: Boot multiplayer dedicated server
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --quit-after 5 -- --server

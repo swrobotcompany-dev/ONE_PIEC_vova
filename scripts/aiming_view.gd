@@ -55,10 +55,12 @@ func get_aim(player_pos: Vector3, camera_yaw: float) -> Vector2:
 			return Vector2(offset.x, offset.z).normalized()
 	return fallback
 
-func shoot(player_pos: Vector3, camera_yaw: float, hero: String) -> void:
+func shoot(player_pos: Vector3, camera_yaw: float, hero: String,
+		selected_fruit: String = "") -> void:
 	if shot_cooldown > 0.0:
 		return
-	shot_cooldown = 0.40 if hero == "luffy" else 0.86
+	var style := FruitCatalog.shot_style(selected_fruit)
+	shot_cooldown = (0.40 if hero == "luffy" else 0.86) * float(style.get("rate", 1.0))
 	GameNet.fire_projectile(get_aim(player_pos, camera_yaw))
 
 func update_view(delta: float, hero: Node3D, camera_yaw: float,
@@ -104,6 +106,7 @@ func update_view(delta: float, hero: Node3D, camera_yaw: float,
 
 func _make_bullet(shot: Dictionary) -> Node3D:
 	var kind := str(shot.get("kind", "fist"))
+	var infusion := str(shot.get("infusion", ""))
 	var visual := Node3D.new()
 	add_child(visual)
 	visual.set_meta("age", 0.0)
@@ -130,6 +133,7 @@ func _make_bullet(shot: Dictionary) -> Node3D:
 		hand.radius = 0.65
 		hand.height = 1.1
 		_part(visual, hand, Color(1.0, 0.80, 0.54)).position.z = -0.55
+		_add_infusion_aura(visual, kind, infusion)
 		return visual
 	if kind == "slash":
 		# Zoro: a wide horizontal turquoise flying blade, not a bullet.
@@ -141,6 +145,7 @@ func _make_bullet(shot: Dictionary) -> Node3D:
 		highlight.size = Vector3(3.2, 0.08, 0.55)
 		var shine := _part(visual, highlight, Color(0.90, 1.0, 1.0))
 		shine.rotation.z = -0.21
+		_add_infusion_aura(visual, kind, infusion)
 		return visual
 	var orb := SphereMesh.new()
 	orb.radius = clampf(float(shot.get("radius", 1.5)) * 0.38, 0.38, 1.10)
@@ -160,6 +165,28 @@ func _make_bullet(shot: Dictionary) -> Node3D:
 		# Piercing beams and shards read as long, thin projectiles.
 		visual.scale = Vector3(0.58, 0.58, 2.1)
 	return visual
+
+# A separate colored aura keeps Luffy's fist and Zoro's blade recognizable,
+# while making the equipped Devil Fruit visible to every LAN player.
+func _add_infusion_aura(visual: Node3D, kind: String, infusion: String) -> void:
+	if not FruitCatalog.TYPES.has(infusion):
+		return
+	var tint := FruitCatalog.tint(infusion)
+	if kind == "fist":
+		var ring := TorusMesh.new()
+		ring.inner_radius = 0.72
+		ring.outer_radius = 0.96
+		ring.rings = 6
+		ring.ring_segments = 24
+		var aura := _part(visual, ring, tint)
+		aura.position.z = -0.58
+		aura.rotation.x = PI * 0.5
+	else:
+		var edge := BoxMesh.new()
+		edge.size = Vector3(4.4, 0.13, 0.25)
+		var aura := _part(visual, edge, tint)
+		aura.position.y = 0.24
+		aura.rotation.z = -0.21
 
 func _part(parent: Node3D, mesh: Mesh, color: Color) -> MeshInstance3D:
 	var part := MeshInstance3D.new()

@@ -138,7 +138,8 @@ func _physics_process(delta: float) -> void:
 		if avatars.has(local_id):
 			var pirate: Dictionary = GameNet.state.get("players", {}).get(local_id, {})
 			aiming.shoot(avatars[local_id].global_position, cam_yaw,
-				str(pirate.get("hero", "luffy")))
+				str(pirate.get("hero", "luffy")),
+				str(pirate.get("selected_fruit", "")))
 
 func _process(delta: float) -> void:
 	if ship == null:
@@ -289,7 +290,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			if avatars.has(local_id):
 				var local_player: Dictionary = GameNet.state.get("players", {}).get(local_id, {})
 				aiming.shoot(avatars[local_id].global_position, cam_yaw,
-					str(local_player.get("hero", "luffy")))
+					str(local_player.get("hero", "luffy")),
+					str(local_player.get("selected_fruit", "")))
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			camera_distance = maxf(camera_distance - 2.0, 10.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
