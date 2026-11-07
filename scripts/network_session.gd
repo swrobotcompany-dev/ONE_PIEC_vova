@@ -107,16 +107,22 @@ func _spawn_player(id: int) -> void:
 		"attack_start": 0.0, "attack_pending": false, "facing": 0.0,
 		"move_velocity": Vector3.ZERO, "hurt_number": 0, "hits_total": 0,
 		"next_shot": 0.0, "aim_lock_until": 0.0, "kills": 0, "score": 0,
-		"abilities": [], "jump_count": 0, "jump_height": 0.0, "jump_speed": 0.0}
+		"abilities": [], "fruit_ranks": {}, "selected_fruit": "",
+		"next_fruit": 0.0, "shield_until": 0.0,
+		"jump_count": 0, "jump_height": 0.0, "jump_speed": 0.0}
 	# Restore island fruit powers on reconnect/restart, using the recorded
 	# claimant ID. No account system exists yet, so peer IDs are provisional.
 	var restored: Array = []
+	var ranks: Dictionary = {}
 	for island_id in claimed_fruits:
 		if int(claimed_fruits[island_id]) == id:
 			var ability := fruit_power_for(int(island_id))
 			if not restored.has(ability):
 				restored.append(ability)
+			ranks[ability] = mini(4, int(ranks.get(ability, 0)) + 1)
 	players[id]["abilities"] = restored
+	players[id]["fruit_ranks"] = ranks
+	players[id]["selected_fruit"] = str(restored[0]) if not restored.is_empty() else ""
 	var fruit_count := 0
 	for island_id in claimed_fruits:
 		if int(claimed_fruits[island_id]) == id:
@@ -307,8 +313,8 @@ func _step_players(delta: float) -> void:
 			acceleration = 10.0
 		elif bool(command.get("sprint", false)):
 			speed *= SPRINT_MULTIPLIER
-		if "speed" in pirate.get("abilities", []):
-			speed *= 2.0
+		if "lightning" in pirate.get("abilities", []):
+			speed *= 1.3
 		var velocity: Vector3 = pirate.get("move_velocity", Vector3.ZERO)
 		velocity = velocity.move_toward(motion * speed, acceleration * delta)
 		pirate["move_velocity"] = velocity
@@ -360,30 +366,158 @@ func _request_fire(aim: Vector2) -> void:
 		_server_fire(multiplayer.get_remote_sender_id(), aim)
 
 func _server_fire(id: int, aim: Vector2) -> void:
-	if not players.has(id) or not aim.is_finite() or aim.length_squared() < 0.25:
+	if not players.has(id) or not aim.is_finite() or aim.length_squared() < 0.25 or id == helmsman_id:
 		return
 	var pirate: Dictionary = players[id]
 	if str(pirate["mode"]) == "swim" or world_clock < float(pirate["next_shot"]):
 		return
 	var hero := str(pirate["hero"])
 	var direction := aim.normalized()
-	pirate["next_shot"] = world_clock + (0.56 if hero == "luffy" else 0.82)
+	pirate["next_shot"] = world_clock + (0.40 if hero == "luffy" else 0.86)
 	pirate["facing"] = atan2(-direction.x, -direction.y)
-	pirate["aim_lock_until"] = world_clock + 0.34
+	pirate["aim_lock_until"] = world_clock + 0.30
 	players[id] = pirate
+	var origin := _player_origin(pirate)
+	if hero == "luffy":
+		# Elastic fist: fast, narrow, frequent hits with a little knockback.
+		_spawn_shot(id, hero, "fist", origin, direction, 35.0, 1.4, 1, 1.25, 1, 0.0, "", 0.0, 2.5)
+	else:
+		# Flying three-sword slash: wider, slower cooldown, penetrates 3 guards.
+		_spawn_shot(id, hero, "slash", origin, direction, 44.0, 1.5, 2, 2.2, 3)
+	_push_state()
+
+func _player_origin(pirate: Dictionary) -> Vector3:
 	var origin: Vector3
 	if str(pirate["mode"]) == "deck":
 		origin = ship_position + (pirate["local"] as Vector3).rotated(Vector3.UP, ship_heading)
 	else:
 		origin = pirate["world"]
 	origin.y += 1.45
+	return origin
+
+func _spawn_shot(owner_id: int, hero: String, kind: String, origin: Vector3,
+		direction: Vector2, speed: float, life: float, damage: int,
+		radius: float = 1.5, pierce: int = 1, splash: float = 0.0,
+		status: String = "", status_time: float = 0.0, push: float = 0.0) -> void:
 	projectile_sequence += 1
-	projectiles[projectile_sequence] = {"id": projectile_sequence,
-		"owner": id, "hero": hero, "pos": origin,
-		"velocity": Vector3(direction.x, 0.0, direction.y) *
-			(PROJECTILE_SPEED if hero == "luffy" else PROJECTILE_SPEED * 1.15),
-		"life": PROJECTILE_LIFE, "damage": (1 if hero == "luffy" else 2) +
-			(1 if "strong_attack" in pirate.get("abilities", []) else 0)}
+	projectiles[projectile_sequence] = {
+		"owner": owner_id, "hero": hero, "kind": kind, "pos": origin,
+		"velocity": Vector3(direction.x, 0.0, direction.y) * speed,
+		"life": life, "damage": damage, "radius": radius, "pierce": pierce,
+		"splash": splash, "status": status, "status_time": status_time,
+		"push": push, "hit_guards": [], "visual_only": false}
+
+func _spawn_pulse(owner_id: int, kind: String, center: Vector3, radius: float) -> void:
+	projectile_sequence += 1
+	projectiles[projectile_sequence] = {
+		"owner": owner_id, "hero": "fruit", "kind": kind, "pos": center,
+		"velocity": Vector3.ZERO, "life": 0.42, "damage": 0, "radius": radius,
+		"visual_only": true}
+
+func cycle_fruit() -> void:
+	if multiplayer.is_server():
+		_cycle_fruit(1)
+	elif is_active:
+		_request_cycle_fruit.rpc_id(1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _request_cycle_fruit() -> void:
+	if multiplayer.is_server():
+		_cycle_fruit(multiplayer.get_remote_sender_id())
+
+func _cycle_fruit(id: int) -> void:
+	if not players.has(id):
+		return
+	var pirate: Dictionary = players[id]
+	var abilities: Array = pirate.get("abilities", [])
+	if abilities.is_empty():
+		return
+	var index := abilities.find(str(pirate.get("selected_fruit", "")))
+	pirate["selected_fruit"] = abilities[(index + 1) % abilities.size()]
+	players[id] = pirate
+	_push_state()
+
+func cast_fruit(aim: Vector2) -> void:
+	if not is_active:
+		return
+	if multiplayer.is_server():
+		_server_cast_fruit(1, aim)
+	else:
+		_request_cast_fruit.rpc_id(1, aim)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _request_cast_fruit(aim: Vector2) -> void:
+	if multiplayer.is_server():
+		_server_cast_fruit(multiplayer.get_remote_sender_id(), aim)
+
+func _server_cast_fruit(id: int, aim: Vector2) -> void:
+	if not players.has(id) or not aim.is_finite() or aim.length_squared() < 0.25 or id == helmsman_id:
+		return
+	var pirate: Dictionary = players[id]
+	var kind := str(pirate.get("selected_fruit", ""))
+	if not FruitCatalog.TYPES.has(kind) or not pirate.get("abilities", []).has(kind):
+		return
+	if str(pirate["mode"]) == "swim" or world_clock < float(pirate.get("next_fruit", 0.0)):
+		return
+	var rank := clampi(int(pirate.get("fruit_ranks", {}).get(kind, 1)), 1, 4)
+	var bonus := 1 if rank >= 3 else 0
+	var direction := aim.normalized()
+	var origin := _player_origin(pirate)
+	pirate["next_fruit"] = world_clock + FruitCatalog.cooldown(kind, rank)
+	pirate["facing"] = atan2(-direction.x, -direction.y)
+	pirate["aim_lock_until"] = world_clock + 0.38
+	players[id] = pirate
+	match kind:
+		"rubber":
+			for offset in [-0.18, 0.0, 0.18]:
+				_spawn_shot(id, "fruit", kind, origin, direction.rotated(offset),
+					42.0, 1.2, 1 + bonus, 1.45, 1, 0.0, "", 0.0, 3.5)
+		"fire":
+			_spawn_shot(id, "fruit", kind, origin, direction, 27.0, 1.7,
+				3 + bonus, 1.8, 1, 5.0, "burn", 3.0)
+		"ice":
+			_spawn_shot(id, "fruit", kind, origin, direction, 49.0, 1.2,
+				2 + bonus, 1.8, 1, 0.0, "freeze", 2.4)
+		"lightning":
+			_spawn_shot(id, "fruit", kind, origin, direction, 95.0, 0.8,
+				2 + bonus, 1.8)
+		"sand":
+			for offset in [-0.30, -0.15, 0.0, 0.15, 0.30]:
+				_spawn_shot(id, "fruit", kind, origin, direction.rotated(offset),
+					33.0, 0.65, 1 + bonus, 1.1, 1, 0.0, "slow", 2.0)
+		"smoke":
+			_area_hit(id, origin, 9.0, 1 + bonus, "slow", 2.5, 4.0)
+			_spawn_pulse(id, kind, origin, 9.0)
+		"flower":
+			_area_hit(id, origin, 15.0, 2 + bonus, "", 0.0, 0.0, 3)
+			_spawn_pulse(id, kind, origin, 15.0)
+		"string":
+			_spawn_shot(id, "fruit", kind, origin, direction, 52.0, 1.3,
+				2 + bonus, 1.2, 4, 0.0, "root", 1.8)
+		"light":
+			_spawn_shot(id, "fruit", kind, origin, direction, 115.0, 0.7,
+				2 + bonus, 1.1, 4)
+		"gravity":
+			var center := origin + Vector3(direction.x, 0, direction.y) * 13.0
+			var island := world.closest_island(center)
+			if world.segment_hits_building(island, origin, center):
+				center = origin + Vector3(direction.x, 0, direction.y) * 3.0
+			_area_hit(id, center, 8.0, 2 + bonus, "slow", 3.0, -5.0)
+			_spawn_pulse(id, kind, center, 8.0)
+		"magma":
+			_spawn_shot(id, "fruit", kind, origin, direction, 22.0, 1.8,
+				4 + bonus, 2.3, 1, 4.2, "burn", 4.0)
+		"quake":
+			_area_hit(id, origin, 12.0, 3 + bonus, "", 0.0, 6.0, 8, direction)
+			_spawn_pulse(id, kind, origin + Vector3(direction.x, 0, direction.y) * 4.0, 10.0)
+		"barrier":
+			pirate["shield_until"] = world_clock + 5.0 + float(rank - 1)
+			players[id] = pirate
+			_area_hit(id, origin, 5.5, 1 + bonus, "", 0.0, 3.0)
+			_spawn_pulse(id, kind, origin, 5.5)
+		"poison":
+			_spawn_shot(id, "fruit", kind, origin, direction, 30.0, 1.6,
+				2 + bonus, 1.8, 1, 4.0, "poison", 5.0)
 	_push_state()
 
 func _step_projectiles(delta: float) -> void:
@@ -392,47 +526,131 @@ func _step_projectiles(delta: float) -> void:
 		var start: Vector3 = shot["pos"]
 		var finish: Vector3 = start + (shot["velocity"] as Vector3) * delta
 		shot["life"] = float(shot["life"]) - delta
+		if bool(shot.get("visual_only", false)):
+			if float(shot["life"]) <= 0.0:
+				projectiles.erase(projectile_id)
+			else:
+				projectiles[projectile_id] = shot
+			continue
 		var island := world.closest_island(finish)
+		var island_id := int(island["id"])
 		var blocked := world.segment_hits_building(island, start, finish)
-		if not blocked:
-			var island_id := int(island["id"])
-			if guard_groups.has(island_id):
-				var guards: Array = guard_groups[island_id]
-				for i in range(guards.size()):
-					var enemy: Dictionary = guards[i]
-					if int(enemy["hp"]) <= 0:
-						continue
-					var enemy_pos: Vector3 = enemy["pos"]
-					var ground_d := Vector2(enemy_pos.x - finish.x,
-						enemy_pos.z - finish.z).length()
-					if ground_d < 2.0:
-						var old_hp: int = int(enemy["hp"])
-						enemy["hp"] = maxi(0, old_hp - int(shot["damage"]))
-						enemy["hit_number"] = int(enemy.get("hit_number", 0)) + 1
-						guards[i] = enemy
-						guard_groups[island_id] = guards
-						var shooter_id: int = int(shot["owner"])
-						if players.has(shooter_id):
-							var shooter: Dictionary = players[shooter_id]
-							shooter["hits_total"] = int(shooter["hits_total"]) + 1
-							if old_hp > 0 and int(enemy["hp"]) == 0:
-								enemy["respawn_at"] = world_clock + GUARD_RESPAWN_SECONDS
-								shooter["kills"] = int(shooter["kills"]) + 1
-								shooter["score"] = int(shooter["score"]) + 100
-							players[shooter_id] = shooter
-						blocked = true
-						break
-		if blocked or float(shot["life"]) <= 0.0:
+		var consumed := false
+		if guard_groups.has(island_id):
+			var guards: Array = guard_groups[island_id]
+			var begin := Vector2(start.x, start.z)
+			var end := Vector2(finish.x, finish.z)
+			var segment := end - begin
+			for i in range(guards.size()):
+				var enemy: Dictionary = guards[i]
+				if int(enemy["hp"]) <= 0 or shot["hit_guards"].has(i):
+					continue
+				var pos: Vector3 = enemy["pos"]
+				var point := Vector2(pos.x, pos.z)
+				var t := clampf((point - begin).dot(segment) / maxf(segment.length_squared(), 0.001), 0.0, 1.0)
+				if point.distance_to(begin.lerp(end, t)) > float(shot["radius"]) + 0.65:
+					continue
+				if world.segment_hits_building(island, start, pos):
+					continue
+				var splash := float(shot.get("splash", 0.0))
+				if splash > 0.0:
+					_area_hit(int(shot["owner"]), pos, splash, int(shot["damage"]),
+						str(shot["status"]), float(shot["status_time"]), float(shot["push"]))
+					consumed = true
+				else:
+					_damage_guard(island_id, i, int(shot["damage"]), int(shot["owner"]),
+						str(shot["status"]), float(shot["status_time"]), float(shot["push"]), start)
+					shot["hit_guards"].append(i)
+					shot["pierce"] = int(shot["pierce"]) - 1
+					if str(shot["kind"]) == "lightning":
+						_area_hit(int(shot["owner"]), pos, 8.0, 1, "", 0.0, 0.0, 2, Vector2.ZERO, i)
+					if int(shot["pierce"]) <= 0:
+						consumed = true
+				if consumed:
+					break
+		if blocked or consumed or float(shot["life"]) <= 0.0:
 			projectiles.erase(projectile_id)
 		else:
 			shot["pos"] = finish
 			projectiles[projectile_id] = shot
+
+func _damage_guard(island_id: int, guard_index: int, damage: int, owner_id: int,
+		status: String = "", duration: float = 0.0, push: float = 0.0,
+		from_pos: Vector3 = Vector3.ZERO) -> void:
+	if not guard_groups.has(island_id):
+		return
+	var guards: Array = guard_groups[island_id]
+	if guard_index < 0 or guard_index >= guards.size():
+		return
+	var enemy: Dictionary = guards[guard_index]
+	if int(enemy["hp"]) <= 0:
+		return
+	var hp_before := int(enemy["hp"])
+	enemy["hp"] = maxi(0, hp_before - maxi(damage, 0))
+	enemy["hit_number"] = int(enemy.get("hit_number", 0)) + 1
+	if int(enemy["hp"]) > 0:
+		match status:
+			"burn", "poison":
+				enemy["dot_until"] = maxf(float(enemy.get("dot_until", 0.0)), world_clock + duration)
+				enemy["dot_next"] = world_clock + 1.0
+				enemy["dot_owner"] = owner_id
+				enemy["dot_damage"] = 1
+			"freeze", "root":
+				enemy["freeze_until"] = maxf(float(enemy.get("freeze_until", 0.0)), world_clock + duration)
+			"slow":
+				enemy["slow_until"] = maxf(float(enemy.get("slow_until", 0.0)), world_clock + duration)
+		if absf(push) > 0.1:
+			var away: Vector3 = enemy["pos"] - from_pos
+			away.y = 0
+			if away.length_squared() > 0.01:
+				var candidate: Vector3 = enemy["pos"] + away.normalized() * push
+				var island: Dictionary = world.islands[island_id]
+				if world.ground_height(island, candidate) >= 0.0 and not world.blocked_by_building(island, candidate, 0.9):
+					candidate.y = world.ground_height(island, candidate)
+					enemy["pos"] = candidate
+	else:
+		enemy["respawn_at"] = world_clock + GUARD_RESPAWN_SECONDS
+	guards[guard_index] = enemy
+	guard_groups[island_id] = guards
+	if players.has(owner_id) and damage > 0:
+		var shooter: Dictionary = players[owner_id]
+		shooter["hits_total"] = int(shooter["hits_total"]) + 1
+		if int(enemy["hp"]) == 0:
+			shooter["kills"] = int(shooter["kills"]) + 1
+			shooter["score"] = int(shooter["score"]) + 100
+		players[owner_id] = shooter
+
+func _area_hit(owner_id: int, center: Vector3, radius: float, damage: int,
+		status: String = "", duration: float = 0.0, push: float = 0.0,
+		max_targets: int = 99, facing: Vector2 = Vector2.ZERO, exclude: int = -1) -> void:
+	var island := world.closest_island(center)
+	var island_id := int(island["id"])
+	if not guard_groups.has(island_id):
+		return
+	var hit_count := 0
+	var group: Array = guard_groups[island_id]
+	for i in range(group.size()):
+		if i == exclude or int(group[i]["hp"]) <= 0:
+			continue
+		var pos: Vector3 = group[i]["pos"]
+		var offset := Vector2(pos.x - center.x, pos.z - center.z)
+		if offset.length() > radius:
+			continue
+		if facing.length_squared() > 0.1 and offset.length_squared() > 0.1 and facing.normalized().dot(offset.normalized()) < 0.1:
+			continue
+		if world.segment_hits_building(island, center, pos):
+			continue
+		_damage_guard(island_id, i, damage, owner_id, status, duration, push, center)
+		hit_count += 1
+		if hit_count >= max_targets:
+			break
 
 func _projectile_snapshot() -> Dictionary:
 	var results := {}
 	for id in projectiles:
 		var shot: Dictionary = projectiles[id]
 		results[str(id)] = {"pos": shot["pos"], "hero": shot["hero"],
+			"kind": shot["kind"], "radius": shot["radius"],
 			"velocity": shot["velocity"]}
 	return results
 
@@ -455,7 +673,7 @@ func _server_jump(id: int) -> void:
 	var pirate: Dictionary = players[id]
 	if str(pirate["mode"]) != "land" and str(pirate["mode"]) != "deck":
 		return
-	var max_jumps := 2 if "double_jump" in pirate.get("abilities", []) else 1
+	var max_jumps := 2 if "flower" in pirate.get("abilities", []) else 1
 	if int(pirate.get("jump_count", 0)) >= max_jumps:
 		return
 	pirate["jump_count"] = int(pirate.get("jump_count", 0)) + 1
@@ -483,11 +701,7 @@ func _integrate_jump(pirate: Dictionary, delta: float) -> void:
 	pirate["jump_speed"] = vertical_speed
 
 func fruit_power_for(island_id: int) -> String:
-	match island_id % 3:
-		0: return "speed"
-		1: return "double_jump"
-		_: return "strong_attack"
-	return "speed"
+	return FruitCatalog.for_island(island_id)
 
 func attack() -> void:
 	if multiplayer.is_server():
@@ -560,7 +774,7 @@ func _step_attacks() -> void:
 			var index: int = int(candidate["index"])
 			var target: Dictionary = guards[index]
 			var hp_before: int = int(target["hp"])
-			var damage := (2 if is_zoro else 1) + (1 if "strong_attack" in pirate.get("abilities", []) else 0)
+			var damage := (2 if is_zoro else 1) + (1 if "quake" in pirate.get("abilities", []) else 0)
 			target["hp"] = maxi(0, hp_before - damage)
 			target["hit_number"] = int(target.get("hit_number", 0)) + 1
 			if hp_before > 0 and int(target["hp"]) == 0:
@@ -628,11 +842,15 @@ func _step_guards(delta: float) -> void:
 			var destination := home
 			if target_id >= 0:
 				destination = players[target_id]["world"]
+			if world_clock < float(enemy.get("freeze_until", 0.0)):
+				group[i] = enemy
+				continue
 			if destination.distance_to(pos) > 2.5:
 				var diff := destination - pos
 				diff.y = 0
 				if diff.length() > 0.2:
-					var next := pos + diff.normalized() * minf(4.0 * delta, diff.length())
+					var slow_factor := 0.38 if world_clock < float(enemy.get("slow_until", 0.0)) else 1.0
+					var next := pos + diff.normalized() * minf(4.0 * slow_factor * delta, diff.length())
 					if not world.blocked_by_building(island, next, 0.8):
 						pos = next
 					else:
@@ -644,7 +862,7 @@ func _step_guards(delta: float) -> void:
 			enemy["pos"] = pos
 			if target_id >= 0 and best < 3.0 and world_clock >= float(enemy["next_hit"]):
 				var victim: Dictionary = players[target_id]
-				victim["hp"] = int(victim["hp"]) - 10
+				victim["hp"] = int(victim["hp"]) - (2 if world_clock < float(victim.get("shield_until", 0.0)) else 10)
 				victim["hurt_number"] = int(victim.get("hurt_number", 0)) + 1
 				if int(victim["hp"]) <= 0:
 					victim["hp"] = 100
@@ -657,6 +875,20 @@ func _step_guards(delta: float) -> void:
 				enemy["next_hit"] = world_clock + 1.5
 			group[i] = enemy
 		guard_groups[island_id] = group
+
+func _step_guard_dots() -> void:
+	for island_id in guard_groups:
+		var group: Array = guard_groups[island_id]
+		for i in range(group.size()):
+			var enemy: Dictionary = group[i]
+			if int(enemy["hp"]) <= 0:
+				continue
+			if world_clock < float(enemy.get("dot_until", 0.0)) and world_clock >= float(enemy.get("dot_next", INF)):
+				enemy["dot_next"] = world_clock + 1.0
+				group[i] = enemy
+				guard_groups[island_id] = group
+				_damage_guard(int(island_id), i, int(enemy.get("dot_damage", 1)), int(enemy.get("dot_owner", -1)))
+				group = guard_groups[island_id]
 
 func collect_treasure() -> void:
 	if multiplayer.is_server():
@@ -695,6 +927,10 @@ func _collect(id: int) -> void:
 		var known: Array = pirate.get("abilities", [])
 		if not known.has(power):
 			known.append(power)
+		pirate["selected_fruit"] = power
+		var ranks: Dictionary = pirate.get("fruit_ranks", {})
+		ranks[power] = mini(4, int(ranks.get(power, 0)) + 1)
+		pirate["fruit_ranks"] = ranks
 		pirate["abilities"] = known
 	players[id] = pirate
 	_push_state()
@@ -708,6 +944,7 @@ func _physics_process(delta: float) -> void:
 	_step_players(delta)
 	_step_attacks()
 	_step_projectiles(delta)
+	_step_guard_dots()
 	_step_guards(delta)
 	snapshot_clock += delta
 	save_clock += delta
@@ -737,6 +974,10 @@ func _make_snapshot() -> Dictionary:
 			"hits_total": pirate.get("hits_total", 0),
 			"kills": pirate.get("kills", 0), "score": pirate.get("score", 0),
 			"abilities": pirate.get("abilities", []),
+			"fruit_ranks": pirate.get("fruit_ranks", {}),
+			"selected_fruit": pirate.get("selected_fruit", ""),
+			"fruit_cooldown": maxf(0.0, float(pirate.get("next_fruit", 0.0)) - world_clock),
+			"shield": maxf(0.0, float(pirate.get("shield_until", 0.0)) - world_clock),
 			"jump_count": pirate.get("jump_count", 0)}
 	for island_id in guard_groups:
 		var group: Array = guard_groups[island_id]
