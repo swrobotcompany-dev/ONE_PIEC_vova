@@ -185,7 +185,11 @@ func _process(delta: float) -> void:
 			int(local_player.get("hp", 100)), int(local_player.get("fruits", 0)),
 			int(local_player.get("hits_total", 0)),
 			int(local_player.get("kills", 0)), int(local_player.get("score", 0)),
-			local_player.get("abilities", []))
+			local_player.get("abilities", []),
+			str(local_player.get("selected_fruit", "")),
+			int(local_player.get("fruit_ranks", {}).get(str(local_player.get("selected_fruit", "")), 0)),
+			float(local_player.get("fruit_cooldown", 0.0)),
+			float(local_player.get("shield", 0.0)))
 		hud.update_scoreboard(pirates)
 
 func _sync_avatars(pirates: Dictionary, delta: float) -> void:
@@ -305,3 +309,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			GameNet.jump()
 		elif event.keycode == KEY_J:
 			GameNet.attack()
+		elif event.keycode == KEY_C:
+			GameNet.cycle_fruit()
+		elif event.keycode == KEY_Q:
+			var local_id := str(multiplayer.get_unique_id())
+			if avatars.has(local_id):
+				GameNet.cast_fruit(aiming.get_aim(avatars[local_id].global_position, cam_yaw))
