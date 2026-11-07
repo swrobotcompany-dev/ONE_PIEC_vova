@@ -36,3 +36,14 @@ Pirate guards now award **+100 points and +1 kill** to the player who lands the 
 Island silhouettes are no longer perfect circles. Terrain varies by biome: tropical hills, jungle ridges, snowy mountains, desert dunes, volcanic craters, rocky cliffs, mesa plateaus, lagoon islands and Laugh Tale. Server navigation, land meshes, shoreline clipping and ship collision reference the **same deterministic coastline function**.
 
 The previous water-triangle clipping algorithm incorrectly clipped polygons against a non-convex outside-of-circle area. The new adaptive shoreline tessellation entirely omits uncertain cells, down to approximately 1.9 m, so water triangles never intersect land. An automated triangle-level test verifies this.
+
+
+## Pirates, Devil Fruits and island spacing (2026-11)
+
+- All 56 islands have server-side pirate spawns: three recognizable types (cutlass raider, bandana bandit, armored brute). Enemies continue guarding looted islands; defeated pirates respawn after 90 seconds when players return.
+- Ship helm: A turns LEFT, D turns RIGHT when sailing forward. The archipelago has been condensed around Dawn Island, with two guaranteed early destinations; Laugh Tale remains a distant objective.
+- Defeat the island pirates, then press **G** near its center to obtain its Devil Fruit. Depending on the island the power is **SPEED ×2**, **DOUBLE JUMP**, or **DAMAGE +1**. Unique powers accumulate; re-collecting the same type does not stack it further.
+- **Space** jumps, then jumps a second time mid-air when DOUBLE JUMP is unlocked; **J** is melee attack; **LMB** shoots; **Tab** switches Luffy/Zoro. Powers appear in the HUD.
+- Fruit ownership is persisted with world saves. In this LAN prototype saved player IDs are not identity-secure accounts: a returning player with a different peer ID may not recover their fruit power.
+- Both playable hero costumes have improved recognizability through bone-attached 3D accessories and clothing. They remain stylized fan interpretations built on CC0 rigs, not official anime models.
+

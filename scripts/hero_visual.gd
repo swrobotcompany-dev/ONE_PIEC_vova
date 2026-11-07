@@ -33,7 +33,7 @@ func set_hero(kind: String) -> void:
 			child.visible = false
 		remove_child(child)
 		child.queue_free()
-	var path := ROGUE_PATH if kind == "luffy" else BARBARIAN_PATH
+	var path := ROGUE_PATH if kind == "luffy" or kind == "guard_1" else BARBARIAN_PATH
 	var packed := load(path) as PackedScene
 	if packed == null:
 		push_warning("Missing rigged character model: " + path)
@@ -77,6 +77,11 @@ func set_motion(mode: String, moving: bool) -> void:
 		return
 	# Never cancel an attack each network snapshot with the idle animation.
 	if swing_clock > 0:
+		return
+	if mode == "jump":
+		avatar_model.rotation.x = lerpf(avatar_model.rotation.x, 0.0, 0.16)
+		if not _play_named("jump", 0.12):
+			_play_named("idle", 0.12)
 		return
 	if mode == "swim":
 		if not _play_named("swim", 0.13):
@@ -146,33 +151,125 @@ func _bone_anchor(hints: Array[String], fallback: Vector3) -> Node3D:
 	return anchor
 
 func _style_luffy() -> void:
-	# The rig owns the body and clothing: no intersecting duplicate torso mesh.
+	# Straw hat, black spiked hair, open red vest, yellow sash, blue shorts.
+	# Worn accessories follow the relevant rig bones during animations.
 	var head := _bone_anchor(["head"], Vector3(0, 1.9, 0))
-	_cylinder(Vector3(0, 0.36, 0), 0.72, 0.09, Color(0.93, 0.72, 0.30), head)
-	_cylinder(Vector3(0, 0.48, 0), 0.44, 0.27, Color(0.90, 0.70, 0.28), head)
-	_cylinder(Vector3(0, 0.38, 0), 0.46, 0.055, Color(0.75, 0.15, 0.10), head)
+	_cylinder(Vector3(0, 0.36, 0), 0.78, 0.09, Color(0.94, 0.76, 0.34), head)
+	_cylinder(Vector3(0, 0.49, 0), 0.45, 0.27, Color(0.92, 0.70, 0.24), head)
+	_cylinder(Vector3(0, 0.38, 0), 0.46, 0.05, Color(0.76, 0.12, 0.10), head)
+	for i in range(9):
+		var angle := TAU * float(i) / 9.0
+		var tuft := CylinderMesh.new()
+		tuft.top_radius = 0.01
+		tuft.bottom_radius = 0.12
+		tuft.height = 0.22
+		tuft.radial_segments = 6
+		_mesh(tuft, Vector3(cos(angle) * 0.31, 0.13, sin(angle) * 0.31),
+			Color(0.042, 0.043, 0.052), head)
+	var chest := _bone_anchor(["chest", "spine"], Vector3(0, 1.25, 0))
+	for side in [-1.0, 1.0]:
+		_cloth(chest, Vector3(side * 0.29, -0.07, -0.25),
+			Vector3(0.34, 0.89, 0.13), Color(0.85, 0.09, 0.08))
+		_cloth(chest, Vector3(side * 0.43, -0.1, -0.23),
+			Vector3(0.11, 0.67, 0.16), Color(0.96, 0.15, 0.10))
+	var hips := _bone_anchor(["hips", "pelvis"], Vector3(0, 0.85, 0))
+	_cloth(hips, Vector3(0, -0.03, 0), Vector3(0.91, 0.23, 0.68),
+		Color(0.96, 0.74, 0.26))
+	for side in [-1.0, 1.0]:
+		_cloth(hips, Vector3(side * 0.23, -0.39, 0),
+			Vector3(0.43, 0.45, 0.59), Color(0.13, 0.32, 0.69))
+		_cloth(hips, Vector3(side * 0.23, -0.61, 0),
+			Vector3(0.43, 0.10, 0.59), Color(0.90, 0.86, 0.65))
 
 func _style_zoro() -> void:
+	# Distinct short spiky green hair, green robe, sash and three katanas.
 	var head := _bone_anchor(["head"], Vector3(0, 1.9, 0))
-	# Hair as an accessory attached to the head bone, not a static
-	# sphere that the animated character moves through.
 	var hair := SphereMesh.new()
-	hair.radius = 0.42
+	hair.radius = 0.43
 	hair.height = 0.33
-	hair.radial_segments = 12
+	hair.radial_segments = 14
 	hair.rings = 5
-	_mesh(hair, Vector3(0, 0.24, 0), Color(0.12, 0.59, 0.20), head)
-	var hip := _bone_anchor(["hips", "pelvis"], Vector3(0, 0.9, 0))
+	_mesh(hair, Vector3(0, 0.21, 0), Color(0.13, 0.61, 0.19), head)
+	for i in range(12):
+		var angle := TAU * float(i) / 12.0
+		var spike := CylinderMesh.new()
+		spike.top_radius = 0.01
+		spike.bottom_radius = 0.13
+		spike.height = 0.39
+		spike.radial_segments = 6
+		var peak := _mesh(spike, Vector3(cos(angle) * 0.33, 0.37, sin(angle) * 0.33),
+			Color(0.09, 0.54, 0.17), head)
+		peak.rotation.z = cos(angle) * 0.24
+		peak.rotation.x = sin(angle) * 0.24
+	for i in range(3):
+		var gold_ring := TorusMesh.new()
+		gold_ring.inner_radius = 0.042
+		gold_ring.outer_radius = 0.068
+		gold_ring.rings = 4
+		gold_ring.ring_segments = 9
+		_mesh(gold_ring, Vector3(-0.43, -0.05 - 0.12 * float(i), 0.0),
+			Color(0.97, 0.78, 0.27), head)
+	var chest := _bone_anchor(["chest", "spine"], Vector3(0, 1.25, 0))
+	for side in [-1.0, 1.0]:
+		_cloth(chest, Vector3(side * 0.28, -0.15, -0.25),
+			Vector3(0.36, 0.91, 0.15), Color(0.15, 0.40, 0.24))
+	var hips := _bone_anchor(["hips", "pelvis"], Vector3(0, 0.9, 0))
+	_cloth(hips, Vector3(0, -0.05, 0), Vector3(1.0, 0.38, 0.73),
+		Color(0.15, 0.49, 0.25))
 	for i in range(3):
 		var sword := Node3D.new()
-		hip.add_child(sword)
-		sword.position = Vector3(-0.53, -0.10, (float(i) - 1.0) * 0.17)
-		sword.rotation_degrees.z = -26 + i * 12
+		hips.add_child(sword)
+		sword.position = Vector3(-0.65, -0.11, (float(i) - 1.0) * 0.20)
+		sword.rotation_degrees.z = -28 + i * 12
 		_add_sword(sword)
 
 func _style_guard() -> void:
+	var variant := int(hero_kind.trim_prefix("guard_")) if hero_kind.begins_with("guard_") else 0
 	var head := _bone_anchor(["head"], Vector3(0, 1.9, 0))
-	_cylinder(Vector3(0, 0.33, 0), 0.51, 0.17, Color(0.34, 0.14, 0.11), head)
+	var torso := _bone_anchor(["chest", "spine"], Vector3(0, 1.2, 0))
+	var hips := _bone_anchor(["hips", "pelvis"], Vector3(0, 0.9, 0))
+	match variant:
+		0:
+			# Cutlass corsair with broad three-corner hat.
+			_cylinder(Vector3(0, 0.32, 0), 0.69, 0.12, Color(0.15, 0.13, 0.20), head)
+			_cloth(head, Vector3(0, 0.48, 0), Vector3(0.91, 0.30, 0.52),
+				Color(0.20, 0.13, 0.22))
+			_cloth(torso, Vector3(0, -0.18, -0.29), Vector3(0.9, 0.76, 0.16),
+				Color(0.40, 0.12, 0.15))
+			var blade_anchor := Node3D.new()
+			hips.add_child(blade_anchor)
+			blade_anchor.position = Vector3(0.5, 0, 0.1)
+			_add_sword(blade_anchor)
+		1:
+			# Light raider: bandana, eyepatch and slim dagger.
+			_cylinder(Vector3(0, 0.17, 0), 0.45, 0.14, Color(0.72, 0.13, 0.11), head)
+			_cloth(head, Vector3(0.19, -0.09, -0.43), Vector3(0.23, 0.16, 0.09),
+				Color(0.08, 0.09, 0.12))
+			_cloth(torso, Vector3(0, -0.18, -0.27), Vector3(0.77, 0.68, 0.13),
+				Color(0.49, 0.37, 0.21))
+			var dagger_anchor := Node3D.new()
+			hips.add_child(dagger_anchor)
+			dagger_anchor.position = Vector3(0.46, -0.1, -0.1)
+			dagger_anchor.scale = Vector3.ONE * 0.70
+			_add_sword(dagger_anchor)
+		_:
+			# Armored brute: heavy pauldrons and an iron pot helmet.
+			_cylinder(Vector3(0, 0.18, 0), 0.52, 0.35, Color(0.32, 0.36, 0.38), head)
+			_cloth(torso, Vector3(0, -0.21, -0.31), Vector3(1.0, 0.84, 0.16),
+				Color(0.25, 0.30, 0.33))
+			for side in [-1.0, 1.0]:
+				var plate := SphereMesh.new()
+				plate.radius = 0.39
+				plate.height = 0.39
+				plate.radial_segments = 8
+				plate.rings = 4
+				_mesh(plate, Vector3(side * 0.69, 0.11, 0),
+					Color(0.39, 0.43, 0.46), torso)
+
+func _cloth(parent: Node3D, pos: Vector3, size: Vector3, tint: Color) -> void:
+	var cloth := BoxMesh.new()
+	cloth.size = size
+	_mesh(cloth, pos, tint, parent)
 
 func _add_sword(parent: Node3D) -> void:
 	var blade := BoxMesh.new()

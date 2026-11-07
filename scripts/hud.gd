@@ -13,6 +13,7 @@ var address_field: LineEdit
 var port_field: LineEdit
 var quality_button: Button
 var standings: Label
+var abilities_label: Label
 var is_low := false
 var heroes: Label
 
@@ -49,11 +50,22 @@ func _ready() -> void:
 	standings.add_theme_color_override("font_color", Color(1.0, 0.88, 0.55))
 	standings.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(standings)
+	standings.offset_top = 176.0
+	abilities_label = Label.new()
+	abilities_label.anchor_left = 1.0
+	abilities_label.anchor_right = 1.0
+	abilities_label.offset_left = -345.0
+	abilities_label.offset_right = -14.0
+	abilities_label.offset_top = 125.0
+	abilities_label.add_theme_font_size_override("font_size", 15)
+	abilities_label.add_theme_color_override("font_color", Color(0.94, 0.70, 1.0))
+	abilities_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(abilities_label)
 	help = Label.new()
 	help.anchor_left = 0.02
 	help.anchor_top = 1.0
 	help.offset_top = -46
-	help.text = "WASD Move • RMB Rotate camera • Mouse Aim • LMB Shoot • SPACE Melee • TAB Hero • E Helm • F Board"
+	help.text = "WASD Move • RMB Camera • LMB Shoot • SPACE Jump (x2 Fruit) • J Melee • TAB Hero • F Swim"
 	help.add_theme_color_override("font_color", Color(0.95, 0.91, 0.77))
 	help.add_theme_font_size_override("font_size", 17)
 	help.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -124,6 +136,7 @@ func _ready() -> void:
 	contents.add_child(status)
 	details.visible = false
 	standings.visible = false
+	abilities_label.visible = false
 	help.visible = false
 	heroes.get_parent().visible = false
 
@@ -157,6 +170,7 @@ func show_connected() -> void:
 	menu.visible = false
 	details.visible = true
 	standings.visible = true
+	abilities_label.visible = true
 	help.visible = true
 	heroes.get_parent().visible = true
 	# Free cursor for Diablo-like aiming. RMB drag orbits the camera.
@@ -167,6 +181,7 @@ func show_disconnected(message: String) -> void:
 	menu.visible = true
 	details.visible = false
 	standings.visible = false
+	abilities_label.visible = false
 	help.visible = false
 	heroes.get_parent().visible = false
 	show_error(message)
@@ -174,11 +189,18 @@ func show_disconnected(message: String) -> void:
 func update_details(speed: float, location: String, players: int,
 		distance: float, is_helm: bool, gold: int, found: bool,
 		hero: String, mode: String, hp: int, fruits: int, hits: int,
-		kills: int, score: int) -> void:
+		kills: int, score: int, abilities: Array) -> void:
 	var role := "HELM" if is_helm else mode.to_upper()
 	var goal := "FOUND!" if found else "%.1f km" % (distance / 1000.0)
 	details.text = "  %s   •   %.0f m/s   •   %d pirates   •   HP %d   •   Gold %d   •   Fruits %d   •   Kills %d   •   Score %d   •   One Piece %s   •   %s" % [
 		location, absf(speed), players, hp, gold, fruits, kills, score, goal, role]
+	var powers := PackedStringArray()
+	for power in abilities:
+		match str(power):
+			"speed": powers.append("SPEED x2")
+			"double_jump": powers.append("DOUBLE JUMP")
+			"strong_attack": powers.append("DAMAGE +1")
+	abilities_label.text = "🍈  " + ("NONE" if powers.is_empty() else "  •  ".join(powers))
 	heroes.text = ("▶ LUFFY    |    ZORO  [TAB]" if hero == "luffy"
 		else "  LUFFY    |    ▶ ZORO  [TAB]")
 	heroes.add_theme_color_override("font_color",

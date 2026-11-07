@@ -184,7 +184,8 @@ func _process(delta: float) -> void:
 			str(local_player.get("hero", "luffy")), str(local_player.get("mode", "deck")),
 			int(local_player.get("hp", 100)), int(local_player.get("fruits", 0)),
 			int(local_player.get("hits_total", 0)),
-			int(local_player.get("kills", 0)), int(local_player.get("score", 0)))
+			int(local_player.get("kills", 0)), int(local_player.get("score", 0)),
+			local_player.get("abilities", []))
 		hud.update_scoreboard(pirates)
 
 func _sync_avatars(pirates: Dictionary, delta: float) -> void:
@@ -220,7 +221,7 @@ func _sync_avatars(pirates: Dictionary, delta: float) -> void:
 			var previous: Vector3 = last_deck_positions.get(id, deck_loc)
 			moving = previous.distance_to(deck_loc) > 0.02
 			last_deck_positions[id] = deck_loc
-		avatar.set_motion(mode, moving)
+		avatar.set_motion("jump" if int(pirate.get("jump_count", 0)) > 0 else mode, moving)
 		avatar.show_attack(int(pirate.get("attack_number", 0)))
 		avatar.show_hit(int(pirate.get("hurt_number", 0)))
 		if mode == "deck":
@@ -240,7 +241,7 @@ func _sync_guards(groups: Dictionary, focus: Vector3, delta: float) -> void:
 			if int(enemy.get("hp", 0)) <= 0:
 				continue
 			var pos: Vector3 = enemy["pos"]
-			if pos.distance_to(focus) > 240.0:
+			if pos.distance_to(focus) > 520.0:
 				continue
 			var key: String = str(island_id) + "_" + str(i)
 			visible_keys[key] = true
@@ -248,7 +249,7 @@ func _sync_guards(groups: Dictionary, focus: Vector3, delta: float) -> void:
 				var guard := HeroVisual.new()
 				guard.name = "PirateGuard_" + key
 				add_child(guard)
-				guard.set_hero("guard")
+				guard.set_hero("guard_" + str(enemy.get("kind", 0)))
 				var hp_label := Label3D.new()
 				hp_label.name = "HealthLabel"
 				hp_label.position = Vector3(0, 3.3, 0)
@@ -301,4 +302,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_TAB:
 			GameNet.switch_character()
 		elif event.keycode == KEY_SPACE:
+			GameNet.jump()
+		elif event.keycode == KEY_J:
 			GameNet.attack()

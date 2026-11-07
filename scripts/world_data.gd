@@ -3,6 +3,8 @@ extends RefCounted
 
 # The entire world manifest is small: no distant 3D objects are stored here.
 const WORLD_RADIUS := 15000.0
+# Concentrate playable islands, while keeping the distant finale intact.
+const ARCHIPELAGO_RADIUS := 5600.0
 const WORLD_SEED := 4272026
 const ISLAND_COUNT := 56
 
@@ -13,23 +15,26 @@ func _init() -> void:
 	rng.seed = WORLD_SEED
 	islands.append(_make(0, "Dawn Island", Vector2(0.0, -380.0), 175.0, 22.0, "tropical"))
 	islands.append(_make(1, "Laugh Tale / ONE PIECE", Vector2(12600.0, -12800.0), 340.0, 65.0, "legend"))
+	# Two guaranteed early destinations reachable after a short sail.
+	islands.append(_make(2, "Shells Town", Vector2(620.0, -410.0), 145.0, 22.0, "rocky"))
+	islands.append(_make(3, "Orange Town", Vector2(-620.0, -500.0), 158.0, 19.0, "tropical"))
 	var names := ["Shells Town", "Orange Town", "Syrup Village", "Baratie Reef",
 		"Loguetown", "Reverse Cape", "Whiskey Peak", "Little Garden", "Drum Island",
 		"Sandy Kingdom", "Skyward Atoll", "Water City", "Thriller Shoal",
 		"Marine Outpost", "Turtle Bay", "Coral Haven", "Stormwatch",
 		"Mango Cay", "Pirate's Rest", "Whispering Palms", "Skull Rock"]
 	var biomes := ["tropical", "tropical", "desert", "rocky", "jungle", "snow", "volcanic", "mesa", "lagoon"]
-	for i in range(2, ISLAND_COUNT):
+	for i in range(4, ISLAND_COUNT):
 		var radius := rng.randf_range(90.0, 260.0)
 		for attempt in range(350):
-			var p := Vector2(rng.randf_range(-WORLD_RADIUS, WORLD_RADIUS),
-				rng.randf_range(-WORLD_RADIUS, WORLD_RADIUS))
-			if p.length() < 1200.0:
+			var p := Vector2(rng.randf_range(-ARCHIPELAGO_RADIUS, ARCHIPELAGO_RADIUS),
+				rng.randf_range(-ARCHIPELAGO_RADIUS, ARCHIPELAGO_RADIUS))
+			if p.length() < 630.0:
 				continue
 			var valid := true
 			for existing in islands:
 				var q := Vector2(float(existing["x"]), float(existing["z"]))
-				if p.distance_to(q) < radius + float(existing["radius"]) + 380.0:
+				if p.distance_to(q) < radius + float(existing["radius"]) + 165.0:
 					valid = false
 					break
 			if valid:
