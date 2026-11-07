@@ -24,7 +24,7 @@ func _initialize() -> void:
 		if net.guard_groups[int(island["id"])].size() != net.GUARD_COUNT:
 			_fail("Missing pirates on island " + str(island["id"]))
 			return
-	if net.fruit_power_for(0) != "speed" or net.fruit_power_for(1) != "double_jump" or net.fruit_power_for(2) != "strong_attack":
+	if net.fruit_power_for(0) != "rubber" or net.fruit_power_for(1) != "fire" or net.fruit_power_for(2) != "ice":
 		_fail("Fruit ability table is incomplete")
 		return
 
@@ -47,20 +47,22 @@ func _initialize() -> void:
 	net.guard_groups[0] = group
 	net._collect(1)
 	player = net.players[1]
-	if int(player["fruits"]) != 1 or not player["abilities"].has("speed"):
-		_fail("Devil fruit did not grant speed x2")
+	if int(player["fruits"]) != 1 or not player["abilities"].has("rubber") or str(player["selected_fruit"]) != "rubber":
+		_fail("First Devil Fruit was not equipped for combat")
 		return
+	player["abilities"] = ["lightning"]
+	net.players[1] = player
 	net.inputs[1] = {"forward": 1.0, "strafe": 0.0,
 		"yaw": 0.0, "sprint": false}
 	net._step_players(0.6)
 	player = net.players[1]
-	if (player["move_velocity"] as Vector3).length() < net.WALK_SPEED * 1.9:
-		_fail("Speed x2 is not reflected in server movement")
+	if (player["move_velocity"] as Vector3).length() < net.WALK_SPEED * 1.2:
+		_fail("Lightning fruit movement bonus is missing")
 		return
 
 	# The first jump is available without a fruit; the second requires
-	# double_jump and a third mid-air request must be rejected.
-	player["abilities"] = ["double_jump"]
+	# flower and a third mid-air request must be rejected.
+	player["abilities"] = ["flower"]
 	player["jump_count"] = 0
 	player["jump_height"] = 0.0
 	player["jump_speed"] = 0.0
@@ -90,7 +92,7 @@ func _initialize() -> void:
 		_fail("Pirates do not respawn on looted islands")
 		return
 	var abilities_now: Array = net.players[1]["abilities"]
-	if abilities_now.size() != 1 or not abilities_now.has("double_jump"):
+	if abilities_now.size() != 1 or not abilities_now.has("flower"):
 		_fail("Powers changed while enemies respawned")
 		return
 
@@ -109,7 +111,7 @@ func _initialize() -> void:
 	if net.ship_heading >= 0.0:
 		_fail("Ship steering D should turn right")
 		return
-	print("ABILITY PASS: pirates on every island, fruit bonus, double jump, guard respawn, helm steering.")
+	print("ABILITY PASS: pirates on every island, fruit combat unlock, flower double jump, guard respawn, helm steering.")
 	quit(0)
 
 func _fail(message: String) -> void:

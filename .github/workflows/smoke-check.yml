@@ -29,5 +29,7 @@ jobs:
         run: timeout -k 3s 25s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/kills_test.gd
       - name: Check every-island pirates, Devil Fruit powers, jumping and helm steering
         run: timeout -k 3s 30s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/abilities_test.gd
+      - name: Validate all fourteen Devil Fruit combat skills and hero projectiles
+        run: timeout -k 3s 30s docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --script res://tools/fruit_combat_test.gd
       - name: Boot multiplayer dedicated server
         run: docker run --rm -v "$PWD:/game" -w /game grandsea-smoke-engine godot --headless --path /game --quit-after 5 -- --server

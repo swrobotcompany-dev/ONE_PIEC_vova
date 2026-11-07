@@ -24,7 +24,7 @@
 
 ### Обновлённое управление
 
-WASD — идти относительно камеры; за штурвалом — корабль. ПКМ (удерживать) — вращать камеру, ЛКМ — стрелять по направлению курсора, Space — ближняя атака, Tab — Луффи/Зоро, Shift — бег, F — вода/возвращение, G — собрать плод/золото.
+WASD — движение; ПКМ — камера; ЛКМ — уникальная дальняя атака героя; J — ближняя атака; Space — прыжок; Q — активная способность плода; C — следующий плод; Tab — Луффи/Зоро; Shift — бег; F — вода/корабль; G — собрать плод/золото.
 
 Картинка/рендер улучшены без тяжёлых текстур: геометрические вырезы океана, дополнительные камни и пальмы, более подробный рельеф. Режим Low сохраняется. Стены проверяются на сервере и имеют клиентские физические коллайдеры. Новые тесты запускаются автоматически.
 
@@ -42,8 +42,12 @@ The previous water-triangle clipping algorithm incorrectly clipped polygons agai
 
 - All 56 islands have server-side pirate spawns: three recognizable types (cutlass raider, bandana bandit, armored brute). Enemies continue guarding looted islands; defeated pirates respawn after 90 seconds when players return.
 - Ship helm: A turns LEFT, D turns RIGHT when sailing forward. The archipelago has been condensed around Dawn Island, with two guaranteed early destinations; Laugh Tale remains a distant objective.
-- Defeat the island pirates, then press **G** near its center to obtain its Devil Fruit. Depending on the island the power is **SPEED ×2**, **DOUBLE JUMP**, or **DAMAGE +1**. Unique powers accumulate; re-collecting the same type does not stack it further.
-- **Space** jumps, then jumps a second time mid-air when DOUBLE JUMP is unlocked; **J** is melee attack; **LMB** shoots; **Tab** switches Luffy/Zoro. Powers appear in the HUD.
+- Defeat the island pirates, then press **G** near its center to obtain its Devil Fruit. Each island grants one of **14 combat Devil Fruit schools**. Use **C** to select and **Q** to cast: rubber fists, fire, ice, lightning, sand, smoke, flower, string, light, gravity, magma, quake, barrier, and poison. Repeated rewards upgrade that school up to mastery level 4. All attacks and cooldowns are server-authoritative.
+- **Space** jumps (Flower fruit grants double jump); **J** is melee; **LMB** fires hero-specific ranged attacks (Luffy elastic fist, Zoro wide piercing sword wave); **C** cycles unlocked fruit schools; **Q** casts the selected fruit; **Tab** switches Luffy/Zoro. Lightning improves running speed; Quake improves melee damage. Fruit ranks and cooldowns appear in the HUD.
 - Fruit ownership is persisted with world saves. In this LAN prototype saved player IDs are not identity-secure accounts: a returning player with a different peer ID may not recover their fruit power.
 - Both playable hero costumes have improved recognizability through bone-attached 3D accessories and clothing. They remain stylized fan interpretations built on CC0 rigs, not official anime models.
 
+
+## Fruit combat (arcade fan-game rules)
+
+Every island reward maps to one of 14 active combat schools; the 56 islands yield four mastery levels for each school. All skills have independent server-side cooldowns, hit tests, wall occlusion, and enemy status effects (burn, poison, slow, freeze, root, knockback, chain lightning). Barrier reduces incoming guard damage while active. Fruit powers are shared between playable characters for gameplay convenience; **Zoro does not canonically have a Devil Fruit**. This is a fan-game combat adaptation, not a claim about canon.
